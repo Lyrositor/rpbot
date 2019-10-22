@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from yaml import YAMLObject
 
@@ -16,6 +16,7 @@ class Roleplay(YAMLObject):
             plugins: Dict[str, Dict[str, Any]],
             commands: List[str],
             roles: Dict[str, Role],
+            starting_room: str,
             rooms: Dict[str, Room],
             connections: List[Connection]
     ):
@@ -23,5 +24,13 @@ class Roleplay(YAMLObject):
         self.plugins = plugins
         self.commands = commands
         self.roles = roles
+        self.starting_room = starting_room
         self.rooms = rooms
         self.connections = connections
+
+    def get_connection(self, room1: str, room2: str) -> Optional[Connection]:
+        for connection in self.connections:
+            if connection.room1 == room1 and connection.room2 == room2 \
+                    or connection.room2 == room1 and connection.room1 == room2:
+                return connection
+        return None

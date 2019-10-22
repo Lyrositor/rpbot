@@ -77,7 +77,9 @@ class RoleplayBot(Client):
         # Do a special case for !help, since we need an overview of all plugins
         # to make it complete
         if message.clean_content == PluginCommand.PREFIX + 'help':
-            help_message = '\n'.join(p.get_help() for p in plugins)
+            help_message = '\n'.join(
+                p.get_help(State.is_admin(message.author)) for p in plugins
+            )
             if not help_message:
                 help_message = 'No commands are currently available.'
             else:
@@ -110,8 +112,8 @@ class RoleplayBot(Client):
                 }
                 modified_config = True
         if modified_config:
-            await self.save_guild_config(guild, config)
             State.save_config(guild.id, config)
+            await self.save_guild_config(guild, config)
 
         # Pick all the plugins required by the roleplay
         plugins = []

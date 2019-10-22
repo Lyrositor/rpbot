@@ -1,8 +1,8 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Callable, Optional, List, Any, Dict, TYPE_CHECKING, Union
+from typing import Callable, Optional, List, Any, Dict, TYPE_CHECKING
 
-from discord import Message, Guild, CategoryChannel
+from discord import Message, Guild
 from discord.abc import GuildChannel
 
 from rpbot.data.roleplay import Roleplay
@@ -19,6 +19,26 @@ class Plugin(ABC):
         self.bot = bot
         self.roleplay = roleplay
         self.commands: Dict[str, PluginCommand] = {}
+
+    def register_command(
+            self,
+            name: str,
+            handler: Callable,
+            help_msg: Optional[str] = None,
+            requires_player: bool = False,
+            requires_admin: bool = False,
+            requires_room: bool = False,
+            params: Optional[List['PluginCommandParam']] = None
+    ):
+        self.commands[name] = PluginCommand(
+            name=name,
+            handler=handler,
+            help_msg=help_msg,
+            requires_player=requires_player,
+            requires_admin=requires_admin,
+            requires_room=requires_room,
+            params=params
+        )
 
     async def process_message(self, message: Message) -> bool:
         return await self.check_for_command(message)
@@ -38,11 +58,13 @@ class Plugin(ABC):
 
         try:
             spec = self.commands[command]
-            if message.channel.name not in self.roleplay.rooms \
-                    and spec.requires_room:
+            if spec.requires_room and (
+                    not self.roleplay
+                    or message.channel.name not in self.roleplay.rooms
+            ):
                 return True
             await spec.run(message, params)
-        except:
+        except Exception:
             logging.exception(
                 f'Failed to process command {full_command} '
                 f'from {message.author}'
@@ -69,10 +91,11 @@ class Plugin(ABC):
                 return channel
         return None
 
-    def get_help(self):
+    def get_help(self, is_admin):
         return '\n'.join(
             str(self.commands[c]) for c in sorted(self.commands.keys())
-            if not self.commands[c].requires_admin and self.commands[c].enabled
+            if (not self.commands[c].requires_admin or is_admin)
+            and self.commands[c].enabled
         )
 
 
@@ -83,16 +106,16 @@ class PluginCommand:
             self,
             name: str,
             handler: Callable,
-            help: Optional[str] = None,
+            help_msg: Optional[str] = None,
             requires_player: bool = False,
             requires_admin: bool = False,
             requires_room: bool = False,
             params: Optional[List['PluginCommandParam']] = None,
-            enabled: bool = True
+            enabled: bool = False
     ):
         self.name = name
         self.handler = handler
-        self.help = help
+        self.help = help_msg
         self.requires_player = requires_player
         self.requires_admin = requires_admin
         self.requires_room = requires_room
@@ -124,7 +147,7 @@ class PluginCommand:
         return \
             f'**{self.PREFIX}{self.name} ' \
             + ''.join(
-                f'*{p.name}* ' if not p.optional else f'{p.name} '
+                f'*{p.name}* ' if p.optional else f'{p.name} '
                 for p in self.params
             ) \
             + (f'**- {self.help}' if self.help else '')

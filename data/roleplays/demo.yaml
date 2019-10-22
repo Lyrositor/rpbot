@@ -13,52 +13,33 @@ commands:
   - move
   - move_all
   - move_force
-  - give
   - roll
+  - lock
+  - unlock
+  - reveal
 roles:
   gm: !role
     label: Landlord
-    color: 0x000000
+    color: 0xd63cde
   player: !role
     label: Tennant
-    color: 0xAAAAAA
+    color: 0x666bd4
   observer: !role
     label: Peeping Tom
-    color: 0xFFFFFF
-
+    color: 0x87b381
+starting_room: bedroom
 rooms:
   bedroom: !room
     section: 'House'
     description: A luxurious, decadent room for a bed.
-    objects:
-      phone: !object
-        label: A phone
-        look: An ancient-looking phone.
-        take: false
-      bathroom-key: !object
-        label: A polished key
-        look: A very slim, polished key that looks like it opens something in this house.
-        take: true
 
   bathroom: !room
     section: 'House'
     description: It's got a bath and a sink, and that's it.
-    objects:
-      bath: !object
-        label: A bath
-        look: Wow, a bath.
-      sink: !object
-        label: A sink
-        look: It's an ordinary bathroom sink.
 
   cupboard: !room
     section: 'House'
     description: Broomy.
-    objects:
-      broom: !object
-        label: A broom
-        look: It's a broom.
-        take: true
 
 connections:
   - !connection

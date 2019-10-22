@@ -4,6 +4,15 @@ plugins:
   demo_plugin:
     jolliness: 7
 commands:
+  - start
+  - end
+  - reset
+  - player
+  - observer
+  - gm
+  - move
+  - move_all
+  - move_force
   - give
   - roll
 roles:

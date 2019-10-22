@@ -1,8 +1,9 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Callable, Optional, List, Any, Dict, TYPE_CHECKING
+from typing import Callable, Optional, List, Any, Dict, TYPE_CHECKING, Union
 
-from discord import Message
+from discord import Message, Guild, CategoryChannel
+from discord.abc import GuildChannel
 
 from rpbot.data.roleplay import Roleplay
 from rpbot.state import State
@@ -29,13 +30,18 @@ class Plugin(ABC):
         m_split = m[1:].split(' ', 1)
         command = m_split[0]
         full_command = PluginCommand.PREFIX + command
-        params = []
+        params = None
         if len(m_split) > 1:
             params = m_split[1]
         if command not in self.commands:
             return False
+
         try:
-            await self.commands[command].run(message, params)
+            spec = self.commands[command]
+            if message.channel.name not in self.roleplay.rooms \
+                    and spec.requires_room:
+                return True
+            await spec.run(message, params)
         except:
             logging.exception(
                 f'Failed to process command {full_command} '
@@ -49,10 +55,24 @@ class Plugin(ABC):
             )
         return True
 
+    @classmethod
+    def find_channel_by_name(
+            cls, guild: Guild, name: str, category=None
+    ) -> Optional[GuildChannel]:
+        source = guild
+        if category:
+            source = cls.find_channel_by_name(guild, category)
+        if not source:
+            return None
+        for channel in source.channels:
+            if channel.name == name:
+                return channel
+        return None
+
     def get_help(self):
         return '\n'.join(
             str(self.commands[c]) for c in sorted(self.commands.keys())
-            if not self.commands[c].requires_admin
+            if not self.commands[c].requires_admin and self.commands[c].enabled
         )
 
 
@@ -66,18 +86,23 @@ class PluginCommand:
             help: Optional[str] = None,
             requires_player: bool = False,
             requires_admin: bool = False,
-            params: Optional[List['PluginCommandParam']] = None
+            requires_room: bool = False,
+            params: Optional[List['PluginCommandParam']] = None,
+            enabled: bool = True
     ):
         self.name = name
         self.handler = handler
         self.help = help
         self.requires_player = requires_player
         self.requires_admin = requires_admin
+        self.requires_room = requires_room
         self.params = params if params else []
+        self.enabled = enabled
 
-    async def run(self, message: Message, params: str):
+    async def run(self, message: Message, params: Optional[str]):
         is_admin = State.is_admin(message.author)
         is_player = State.is_player(message.author)
+
         if self.requires_admin and not is_admin\
                 or self.requires_player and not (is_player or is_admin):
             raise Exception(
@@ -85,7 +110,10 @@ class PluginCommand:
                 f'{self.PREFIX}{self.name}'
             )
 
-        param_values = params.split(' ', len(self.params))
+        if not self.enabled:
+            raise Exception(f'Command {self.PREFIX}{self.name} is disabled')
+
+        param_values = params.split(' ', len(self.params)) if params else []
         processed_params = []
         for i, param in enumerate(self.params):
             value = param_values[i] if i < len(param_values) else None

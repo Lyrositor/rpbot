@@ -9,3 +9,7 @@ class Connection(YAMLObject):
         self.room2 = room2
         self.hidden = hidden
         self.locked = locked
+
+    @property
+    def name(self):
+        return f'{self.room1}#{self.room2}'

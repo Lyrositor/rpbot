@@ -73,9 +73,10 @@ class State:
     @classmethod
     def _check_role(cls, member: Member, role_idx: int):
         cls._setup()
-        return cls._instance.roles[member.guild.id][role_idx] in [
-            r.id for r in member.roles
-        ] if member.guild.id in cls._instance.roles else False
+        if member.guild.id not in cls._instance.roles:
+            return False
+        role = cls._instance.roles[member.guild.id][role_idx]
+        return any(r.id == role.id for r in member.roles)
 
     @classmethod
     def _get_role(cls, guild_id: int, role_idx: int):

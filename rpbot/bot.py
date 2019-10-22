@@ -19,6 +19,8 @@ from rpbot.state import State
 
 
 class RoleplayBot(Client):
+    BOT_CONFIG_CHANNEL = 'rpbot-config'
+
     def __init__(
             self,
             plugins_dir: str,
@@ -37,7 +39,7 @@ class RoleplayBot(Client):
     async def on_ready(self):
         for guild in self.guilds:
             for channel in guild.channels:
-                if channel.name == BasePlugin.BOT_CONFIG_CHANNEL \
+                if channel.name == self.BOT_CONFIG_CHANNEL \
                         and isinstance(channel, TextChannel) \
                         and channel.last_message_id is not None:
                     # noinspection PyBroadException
@@ -95,7 +97,21 @@ class RoleplayBot(Client):
         if 'rp' not in config or not config['rp']:
             return
 
+        modified_config = False
         roleplay = self.roleplays[config['rp']]
+        if 'connections' not in config:
+            config['connections'] = {}
+            modified_config = True
+        for connection in roleplay.connections:
+            if connection.name not in config['connections']:
+                config['connections'][connection.name] = {
+                    'hidden': connection.hidden,
+                    'locked': connection.locked
+                }
+                modified_config = True
+        if modified_config:
+            await self.save_guild_config(guild, config)
+            State.save_config(guild.id, config)
 
         # Pick all the plugins required by the roleplay
         plugins = []
@@ -161,6 +177,24 @@ class RoleplayBot(Client):
                 send_messages=False,
                 read_message_history=True
             )
+
+    @classmethod
+    async def save_guild_config(cls, guild: Guild, config: Dict[str, Any]):
+        for channel in guild.text_channels:
+            if channel.name == cls.BOT_CONFIG_CHANNEL:
+                config_channel = channel
+                break
+        else:
+            config_channel = await guild.create_text_channel(
+                cls.BOT_CONFIG_CHANNEL,
+                overwrites={
+                    guild.default_role: PermissionOverwrite(
+                        read_messages=False
+                    )
+                }
+            )
+        json_config = json.dumps(config, indent=2)
+        await config_channel.send(f'```json\n{json_config}```')
 
     @staticmethod
     async def create_or_update_role(

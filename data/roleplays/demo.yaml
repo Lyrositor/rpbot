@@ -7,12 +7,15 @@ commands:
   - give
   - roll
 roles:
-  - !role
-    label: Observer
-    color: '#FFFFFF'
-  - !role
-    label: Player
-    color: '#000000'
+  gm: !role
+    label: Landlord
+    color: 0x000000
+  player: !role
+    label: Tennant
+    color: 0xAAAAAA
+  observer: !role
+    label: Peeping Tom
+    color: 0xFFFFFF
 
 rooms:
   bedroom: !room

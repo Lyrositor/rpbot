@@ -5,6 +5,7 @@ from typing import Callable, Optional, List, Any, Dict, TYPE_CHECKING
 from discord import Message
 
 from rpbot.data.roleplay import Roleplay
+from rpbot.state import State
 
 if TYPE_CHECKING:
     from rpbot.bot import RoleplayBot
@@ -18,10 +19,10 @@ class Plugin(ABC):
         self.roleplay = roleplay
         self.commands: Dict[str, PluginCommand] = {}
 
-    async def process_message(self, message: Message, is_admin: bool) -> bool:
-        return await self.check_for_command(message, is_admin)
+    async def process_message(self, message: Message) -> bool:
+        return await self.check_for_command(message)
 
-    async def check_for_command(self, message: Message, is_admin: bool) -> bool:
+    async def check_for_command(self, message: Message) -> bool:
         m = message.clean_content
         if not m.startswith(PluginCommand.PREFIX):
             return False
@@ -34,8 +35,8 @@ class Plugin(ABC):
         if command not in self.commands:
             return False
         try:
-            await self.commands[command].run(message, is_admin, params)
-        except Exception as err:
+            await self.commands[command].run(message, params)
+        except:
             logging.exception(
                 f'Failed to process command {full_command} '
                 f'from {message.author}'
@@ -51,7 +52,7 @@ class Plugin(ABC):
     def get_help(self):
         return '\n'.join(
             str(self.commands[c]) for c in sorted(self.commands.keys())
-            if not self.commands[c].admin_only
+            if not self.commands[c].requires_admin
         )
 
 
@@ -63,17 +64,22 @@ class PluginCommand:
             name: str,
             handler: Callable,
             help: Optional[str] = None,
-            admin_only: bool = False,
+            requires_player: bool = False,
+            requires_admin: bool = False,
             params: Optional[List['PluginCommandParam']] = None
     ):
         self.name = name
         self.handler = handler
         self.help = help
-        self.admin_only = admin_only
+        self.requires_player = requires_player
+        self.requires_admin = requires_admin
         self.params = params if params else []
 
-    async def run(self, message: Message, is_admin: bool, params: str):
-        if self.admin_only and not is_admin:
+    async def run(self, message: Message, params: str):
+        is_admin = State.is_admin(message.author)
+        is_player = State.is_player(message.author)
+        if self.requires_admin and not is_admin\
+                or self.requires_player and not (is_player or is_admin):
             raise Exception(
                 f'{message.author} is not authorised to use command '
                 f'{self.PREFIX}{self.name}'

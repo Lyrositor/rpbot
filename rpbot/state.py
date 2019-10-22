@@ -1,50 +1,84 @@
 from collections import defaultdict
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
-from rpbot.plugin import Plugin
+from discord import Member, Role
+
+if TYPE_CHECKING:
+    from rpbot.plugin import Plugin
 
 
 class State:
-    _instance = None
+    _instance: Optional['State'] = None
 
     def __init__(self):
-        self.admins = []
-        self.configs = {}
-        self.plugins = defaultdict(lambda: [])
-
-    @classmethod
-    def set_admins(cls, admins: List[int]):
-        if not cls._instance:
-            cls._instance = State()
-        cls._instance.admins = admins
+        self.configs: Dict[int, Any] = {}
+        self.plugins: Dict[int, List['Plugin']] = defaultdict(lambda: [])
+        self.roles: Dict[int, Tuple[Role, Role, Role]] = {}
 
     @classmethod
     def save_config(cls, guild_id: int, config: Dict[str, Any]):
-        if not cls._instance:
-            cls._instance = State()
+        cls._setup()
         cls._instance.configs[guild_id] = config
 
     @classmethod
-    def save_plugins(cls, guild_id: int, plugins: List[Plugin]):
-        if not cls._instance:
-            cls._instance = State()
+    def save_plugins(cls, guild_id: int, plugins: List['Plugin']):
+        cls._setup()
         cls._instance.plugins[guild_id] = plugins
 
     @classmethod
-    def is_admin(cls, user_id: int) -> bool:
-        if not cls._instance:
-            cls._instance = State()
-        return user_id in cls._instance.admins
+    def save_roles(cls, guild_id: int, gm: Role, player: Role, observer: Role):
+        cls._setup()
+        cls._instance.roles[guild_id] = (gm, player, observer)
+
+    @classmethod
+    def get_admin_role(cls, guild_id: int) -> Optional[Role]:
+        return cls._get_role(guild_id, 0)
+
+    @classmethod
+    def get_player_role(cls, guild_id: int) -> Optional[Role]:
+        return cls._get_role(guild_id, 1)
+
+    @classmethod
+    def get_observer_role(cls, guild_id: int) -> Optional[Role]:
+        return cls._get_role(guild_id, 2)
+
+    @classmethod
+    def is_admin(cls, member: Member) -> bool:
+        return cls._check_role(member, 0) or member.guild.owner.id == member.id
+
+    @classmethod
+    def is_player(cls, member: Member) -> bool:
+        return cls._check_role(member, 1)
+
+    @classmethod
+    def is_observer(cls, member: Member) -> bool:
+        return cls._check_role(member, 2)
 
     @classmethod
     def get_config(cls, guild_id: int) -> Dict[str, Any]:
-        if not cls._instance:
-            cls._instance = State()
+        cls._setup()
         return cls._instance.configs[guild_id] \
             if guild_id in cls._instance.configs else None
 
     @classmethod
-    def get_plugins(cls, guild_id: int) -> List[Plugin]:
+    def get_plugins(cls, guild_id: int) -> List['Plugin']:
+        cls._setup()
+        return cls._instance.plugins[guild_id]
+
+    @classmethod
+    def _setup(cls):
         if not cls._instance:
             cls._instance = State()
-        return cls._instance.plugins[guild_id]
+
+    @classmethod
+    def _check_role(cls, member: Member, role_idx: int):
+        cls._setup()
+        return cls._instance.roles[member.guild.id][role_idx] in [
+            r.id for r in member.roles
+        ] if member.guild.id in cls._instance.roles else False
+
+    @classmethod
+    def _get_role(cls, guild_id: int, role_idx: int):
+        cls._setup()
+        return cls._instance.roles[guild_id][role_idx] \
+            if guild_id in cls._instance.roles else None

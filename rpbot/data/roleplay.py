@@ -15,7 +15,7 @@ class Roleplay(YAMLObject):
             id: str,
             plugins: Dict[str, Dict[str, Any]],
             commands: List[str],
-            roles: List[Role],
+            roles: Dict[str, Role],
             rooms: Dict[str, Room],
             connections: List[Connection]
     ):

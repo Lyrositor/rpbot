@@ -164,7 +164,7 @@ class BasePlugin(Plugin):
         player_role = State.get_player_role(message.guild.id)
         for member in message.mentions:
             await member.add_roles(player_role)
-        await self.move_all(message, self.roleplay.starting_room)
+        await self.move_force(message, self.roleplay.starting_room, None)
 
         await message.channel.send(f'The game begins.')
         await loading_message.delete()
@@ -278,7 +278,7 @@ class BasePlugin(Plugin):
             await self._move_player(player, room)
 
     # noinspection PyUnusedLocal
-    async def move_force(self, message: Message, room: str, user: str):
+    async def move_force(self, message: Message, room: str, user: Optional[str]):
         for player in message.mentions:
             await self._move_player(player, room)
 

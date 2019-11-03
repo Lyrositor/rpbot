@@ -135,13 +135,13 @@ class RoleplayBot(Client):
         # Ensure the server state matches
         base_pos = guild.me.top_role.position
         gm_role = await self.create_or_update_role(
-            guild, roleplay.roles['gm'], base_pos - 1
+            guild, roleplay.roles['gm'], base_pos
         )
         player_role = await self.create_or_update_role(
-            guild, roleplay.roles['player'], base_pos - 2
+            guild, roleplay.roles['player'], base_pos
         )
         observer_role = await self.create_or_update_role(
-            guild, roleplay.roles['observer'], base_pos - 3
+            guild, roleplay.roles['observer'], base_pos
         )
         State.save_roles(guild.id, gm_role, player_role, observer_role)
 
@@ -180,9 +180,9 @@ class RoleplayBot(Client):
             if channel:
                 if not force_reset:
                     continue
-                await channel.edit(
-                    topic=room.description, overwrites=overwrites
-                )
+                await channel.edit(topic=room.description)
+                for target, overwrite in overwrites.items():
+                    await channel.set_permissions(target, overwrite=overwrite)
             else:
                 await source.create_text_channel(
                     channel_id, topic=room.description, overwrites=overwrites

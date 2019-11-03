@@ -47,8 +47,10 @@ connections:
     room2: bathroom
     hidden: false
     locked: true
+    timer: 1
   - !connection
     room1: bedroom
     room2: cupboard
     hidden: true
     locked: false
+    timer: 2

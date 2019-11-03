@@ -159,9 +159,11 @@ class RoleplayBot(Client):
                 (c for c in source.text_channels if c.name == channel_id),
                 None
             )
-            if not channel:
-                channel = await source.create_text_channel(channel_id)
-            await channel.edit(topic=room.description)
+            if channel:
+                continue
+            channel = await source.create_text_channel(
+                channel_id, topic=room.description
+            )
             await channel.set_permissions(
                 guild.default_role,
                 read_messages=False,

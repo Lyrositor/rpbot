@@ -14,6 +14,7 @@ class State:
         self.configs: Dict[int, Any] = {}
         self.plugins: Dict[int, List['Plugin']] = defaultdict(lambda: [])
         self.roles: Dict[int, Tuple[Role, Role, Role]] = {}
+        self.vars = defaultdict(lambda: None)
 
     @classmethod
     def save_config(cls, guild_id: int, config: Dict[str, Any]):
@@ -29,6 +30,11 @@ class State:
     def save_roles(cls, guild_id: int, gm: Role, player: Role, observer: Role):
         cls._setup()
         cls._instance.roles[guild_id] = (gm, player, observer)
+
+    @classmethod
+    def set_var(cls, var_name: str, var_value: Any):
+        cls._setup()
+        cls._instance.vars[var_name] = var_value
 
     @classmethod
     def get_admin_role(cls, guild_id: int) -> Optional[Role]:
@@ -64,6 +70,11 @@ class State:
     def get_plugins(cls, guild_id: int) -> List['Plugin']:
         cls._setup()
         return cls._instance.plugins[guild_id]
+
+    @classmethod
+    def get_var(cls, var_name: str) -> Any:
+        cls._setup()
+        return cls._instance.vars[var_name]
 
     @classmethod
     def _setup(cls):

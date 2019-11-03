@@ -1,3 +1,5 @@
+from collections import defaultdict
+from datetime import datetime, timedelta
 from random import randint
 from typing import TYPE_CHECKING, Optional, Iterable, Any, Dict, Tuple
 
@@ -37,6 +39,9 @@ class BasePlugin(Plugin):
 
     def __init__(self, bot: 'RoleplayBot', roleplay: Roleplay):
         super().__init__(bot, roleplay)
+
+        if not State.get_var('move_timers'):
+            State.set_var('move_timers', defaultdict(lambda: datetime.min))
 
         self.register_command(
             name=START_CMD,
@@ -244,7 +249,27 @@ class BasePlugin(Plugin):
             await channel.send(f'Cannot reach {room} from here.')
             return
 
+        move_timers = State.get_var('move_timers')
+        time_remaining = (
+                move_timers[message.author.id] - datetime.now()
+        ).total_seconds()
+        if time_remaining > 0:
+            minutes = time_remaining // 60
+            await channel.send(
+                'Must wait '
+                + (
+                    f'{int(minutes)} minutes' if minutes
+                    else f'{int(time_remaining)} seconds'
+                )
+                + ' before moving again.'
+            )
+            return
+
+        connection = self.roleplay.get_connection(channel.name, room)
         await self._move_player(message.author, room)
+        move_timers[message.author.id] = datetime.now() + timedelta(
+            minutes=connection.timer
+        )
         await channel.send(f'{message.author.mention} moves to {room}')
         await message.delete()
 

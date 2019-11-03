@@ -1,3 +1,4 @@
+import asyncio
 from collections import defaultdict
 from datetime import datetime, timedelta
 from random import randint
@@ -382,12 +383,16 @@ class BasePlugin(Plugin):
             connection_config['h'] = hidden
 
     async def _move_player(self, player: Member, dest_room: str):
+        clear_permissions = []
         for room in self.roleplay.rooms:
             room_channel = self.find_channel_by_name(
                 player.guild, room, self.roleplay.rooms[room].section
             )
             # noinspection PyTypeChecker
-            await room_channel.set_permissions(player, overwrite=None)
+            clear_permissions.append(
+                room_channel.set_permissions(player, overwrite=None)
+            )
+        await asyncio.wait(clear_permissions)
         new_channel = self.find_channel_by_name(
             player.guild, dest_room, self.roleplay.rooms[dest_room].section
         )

@@ -95,7 +95,7 @@ class RoleplayBot(Client):
     async def refresh_from_config(
             self, guild: Guild, config: Dict[str, Any], force_reset=False
     ):
-        logging.info('Refreshing server state from config')
+        logging.info(f'Refreshing server state from config for {guild.name}')
 
         State.save_config(guild.id, config)
         if 'rp' not in config or not config['rp']:
@@ -134,14 +134,12 @@ class RoleplayBot(Client):
 
         # Ensure the server state matches
         base_pos = guild.me.top_role.position
-        gm_role = await self.create_or_update_role(
-            guild, roleplay.roles['gm'], base_pos
-        )
+        gm_role = await self.create_or_update_role(guild, roleplay.roles['gm'])
         player_role = await self.create_or_update_role(
-            guild, roleplay.roles['player'], base_pos
+            guild, roleplay.roles['player']
         )
         observer_role = await self.create_or_update_role(
-            guild, roleplay.roles['observer'], base_pos
+            guild, roleplay.roles['observer']
         )
         State.save_roles(guild.id, gm_role, player_role, observer_role)
 
@@ -208,9 +206,7 @@ class RoleplayBot(Client):
 
     @staticmethod
     async def create_or_update_role(
-            guild: Guild,
-            role_spec: Role,
-            position: int
+            guild: Guild, role_spec: Role
     ) -> discord.Role:
         role: discord.Role = next(
             (r for r in guild.roles if r.name == role_spec.label),
@@ -221,8 +217,7 @@ class RoleplayBot(Client):
         await role.edit(
             color=Color(role_spec.color),
             hoist=True,
-            mentionable=True,
-            position=position
+            mentionable=True
         )
         return role
 

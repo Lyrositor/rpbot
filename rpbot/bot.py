@@ -92,7 +92,9 @@ class RoleplayBot(Client):
         for plugin in plugins:
             await plugin.process_message(message)
 
-    async def refresh_from_config(self, guild: Guild, config: Dict[str, Any]):
+    async def refresh_from_config(
+            self, guild: Guild, config: Dict[str, Any], force_reset=False
+    ):
         logging.info('Refreshing server state from config')
 
         State.save_config(guild.id, config)
@@ -107,8 +109,8 @@ class RoleplayBot(Client):
         for connection in roleplay.connections:
             if connection.name not in config['connections']:
                 config['connections'][connection.name] = {
-                    'hidden': connection.hidden,
-                    'locked': connection.locked
+                    'h': connection.hidden,
+                    'l': connection.locked
                 }
                 modified_config = True
         if modified_config:
@@ -159,28 +161,32 @@ class RoleplayBot(Client):
                 (c for c in source.text_channels if c.name == channel_id),
                 None
             )
+            overwrites = {
+                guild.default_role: PermissionOverwrite(
+                    read_messages=False,
+                    read_message_history=False
+                ),
+                gm_role: PermissionOverwrite(
+                    read_messages=True,
+                    send_messages=True,
+                    read_message_history=True
+                ),
+                observer_role: PermissionOverwrite(
+                    read_messages=True,
+                    send_messages=False,
+                    read_message_history=True
+                )
+            }
             if channel:
-                continue
-            channel = await source.create_text_channel(
-                channel_id, topic=room.description
-            )
-            await channel.set_permissions(
-                guild.default_role,
-                read_messages=False,
-                read_message_history=False
-            )
-            await channel.set_permissions(
-                gm_role,
-                read_messages=True,
-                send_messages=True,
-                read_message_history=True
-            )
-            await channel.set_permissions(
-                observer_role,
-                read_messages=True,
-                send_messages=False,
-                read_message_history=True
-            )
+                if not force_reset:
+                    continue
+                await channel.edit(
+                    topic=room.description, overwrites=overwrites
+                )
+            else:
+                await source.create_text_channel(
+                    channel_id, topic=room.description, overwrites=overwrites
+                )
 
     @classmethod
     async def save_guild_config(cls, guild: Guild, config: Dict[str, Any]):
@@ -197,7 +203,7 @@ class RoleplayBot(Client):
                     )
                 }
             )
-        json_config = json.dumps(config, indent=2)
+        json_config = json.dumps(config, separators=(',',':'))
         await config_channel.send(f'```json\n{json_config}```')
 
     @staticmethod

@@ -40,9 +40,6 @@ class BasePlugin(Plugin):
     def __init__(self, bot: 'RoleplayBot', roleplay: Roleplay):
         super().__init__(bot, roleplay)
 
-        if not State.get_var('move_timers'):
-            State.set_var('move_timers', defaultdict(lambda: datetime.min))
-
         self.register_command(
             name=START_CMD,
             handler=self.start_game,
@@ -160,7 +157,7 @@ class BasePlugin(Plugin):
         loading_message = await message.channel.send(f'Setting up new game...')
         config = {'rp': roleplay, 'connections': {}}
         await self.bot.save_guild_config(message.guild, config)
-        await self.bot.refresh_from_config(message.guild, config)
+        await self.bot.refresh_from_config(message.guild, config, True)
         await message.author.add_roles(State.get_admin_role(message.guild.id))
 
         self.roleplay = self.bot.roleplays[roleplay]
@@ -249,7 +246,9 @@ class BasePlugin(Plugin):
             await channel.send(f'Cannot reach {room} from here.')
             return
 
-        move_timers = State.get_var('move_timers')
+        move_timers = State.get_var(message.guild.id, 'move_timers')
+        if not move_timers:
+            move_timers = defaultdict(lambda: datetime.min)
         time_remaining = (
                 move_timers[message.author.id] - datetime.now()
         ).total_seconds()
@@ -270,6 +269,7 @@ class BasePlugin(Plugin):
         move_timers[message.author.id] = datetime.now() + timedelta(
             minutes=connection.timer
         )
+        State.set_var(message.guild.id, 'move_timers', move_timers)
         await channel.send(f'{message.author.mention} moves to {room}')
         await message.delete()
 
@@ -317,7 +317,7 @@ class BasePlugin(Plugin):
                 'revealed.'
             )
         else:
-            config['connections'][connection.name]['hidden'] = False
+            config['connections'][connection.name]['h'] = False
             State.save_config(message.guild.id, config)
             await self.bot.save_guild_config(message.guild, config)
             await channel.send(
@@ -337,7 +337,7 @@ class BasePlugin(Plugin):
                 f'No connection from {channel.name} to {location}.'
             )
             return
-        locked = config['connections'][connection.name]['locked']
+        locked = config['connections'][connection.name]['l']
         if locked and lock or not locked and not lock:
             await channel.send(
                 f'Access to {location} is already '
@@ -359,12 +359,12 @@ class BasePlugin(Plugin):
     ) -> Iterable[Tuple[str, bool]]:
         for connection in self.roleplay.connections:
             state = connections[connection.name]
-            if state['hidden']:
+            if state['h']:
                 continue
             if room == connection.room1:
-                yield (connection.room2, state['locked'])
+                yield (connection.room2, state['l'])
             elif room == connection.room2:
-                yield (connection.room1,  state['locked'])
+                yield (connection.room1,  state['l'])
 
     def _update_connection(
             self,
@@ -377,9 +377,9 @@ class BasePlugin(Plugin):
         connection = self.roleplay.get_connection(room1, room2)
         connection_config = connections[connection.name]
         if locked is not None:
-            connection_config['locked'] = locked
+            connection_config['l'] = locked
         if hidden is not None:
-            connection_config['hidden'] = hidden
+            connection_config['h'] = hidden
 
     async def _move_player(self, player: Member, dest_room: str):
         for room in self.roleplay.rooms:

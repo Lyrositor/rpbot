@@ -1,0 +1,9 @@
+[rpbot]
+
+token = ''
+
+admins = []
+
+roleplays_dir = 'data/roleplays'
+
+plugins_dir = 'data/plugins'

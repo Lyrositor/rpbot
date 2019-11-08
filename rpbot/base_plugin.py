@@ -84,6 +84,7 @@ class BasePlugin(Plugin):
             help_msg='Moves you to a new location if specified, otherwise lists'
             ' available destinations.',
             requires_player=True,
+            requires_room=True,
             params=[PluginCommandParam('location', True)]
         )
         self.register_command(
@@ -104,8 +105,8 @@ class BasePlugin(Plugin):
             name=ROLL_CMD,
             handler=self.roll_dice,
             help_msg='Rolls the specified number of d6s.',
-            requires_player=True,
-            requires_room=True,
+            requires_player=False,
+            requires_room=False,
             params=[PluginCommandParam('dice', True, 1, int)]
         )
         self.register_command(

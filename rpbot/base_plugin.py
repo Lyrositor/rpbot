@@ -294,7 +294,8 @@ class BasePlugin(Plugin):
         for i in range(num_dice):
             results.append(self.NUMBERS_EMOJI[randint(1, 6)])
         await message.channel.send(
-            f'{message.author.mention} rolled: ' + ' '.join(results)
+            f'{message.author.mention} rolled **{sum(results)}**: '
+            + ' '.join(results)
         )
 
     async def lock(self, message: Message, location: str):

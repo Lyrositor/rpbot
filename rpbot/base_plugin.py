@@ -296,10 +296,13 @@ class BasePlugin(Plugin):
             )
             return
         results = []
+        total = 0
         for i in range(num_dice):
-            results.append(self.NUMBERS_EMOJI[randint(1, 6)])
+            result = randint(1, 6)
+            total += result
+            results.append(self.NUMBERS_EMOJI[result])
         await message.channel.send(
-            f'{message.author.mention} rolled **{sum(results)}**: '
+            f'{message.author.mention} rolled **{total}**: '
             + ' '.join(results)
         )
 

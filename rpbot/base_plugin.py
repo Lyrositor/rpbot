@@ -290,6 +290,11 @@ class BasePlugin(Plugin):
                 'You need to specify a positive number of dice to roll.'
             )
             return
+        if num_dice > 20:
+            await message.channel.send(
+                'You can only roll a maximum of 20 dice.'
+            )
+            return
         results = []
         for i in range(num_dice):
             results.append(self.NUMBERS_EMOJI[randint(1, 6)])

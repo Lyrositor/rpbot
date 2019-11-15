@@ -161,18 +161,15 @@ class RoleplayBot(Client):
             )
             overwrites = {
                 guild.default_role: PermissionOverwrite(
-                    read_messages=False,
-                    read_message_history=False
+                    read_messages=False
                 ),
                 gm_role: PermissionOverwrite(
                     read_messages=True,
-                    send_messages=True,
-                    read_message_history=True
+                    send_messages=True
                 ),
                 observer_role: PermissionOverwrite(
                     read_messages=True,
-                    send_messages=False,
-                    read_message_history=True
+                    send_messages=False
                 )
             }
             if channel:

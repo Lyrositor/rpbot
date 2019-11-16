@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Optional, Iterable, Any, Dict, Tuple
 
 from discord import Message, PermissionOverwrite, Role, Member, TextChannel, \
     Guild
+from discord.abc import GuildChannel
 
 from rpbot.data.roleplay import Roleplay
 from rpbot.plugin import Plugin, PluginCommandParam
@@ -267,12 +268,15 @@ class BasePlugin(Plugin):
             return
 
         connection = self.roleplay.get_connection(channel.name, room)
-        await self._move_player(message.author, room)
+        new_channel = await self._move_player(message.author, room)
         move_timers[message.author.id] = datetime.now() + timedelta(
             minutes=connection.timer
         )
         State.set_var(message.guild.id, 'move_timers', move_timers)
         await channel.send(f'{message.author.mention} moves to {room}')
+        await new_channel.send(
+            f'{message.author.mention} moves in from {channel.name}'
+        )
         await message.delete()
 
     async def move_all(self, message: Message, room: str):
@@ -392,7 +396,9 @@ class BasePlugin(Plugin):
         if hidden is not None:
             connection_config['h'] = hidden
 
-    async def _move_player(self, player: Member, dest_room: str):
+    async def _move_player(
+            self, player: Member, dest_room: str
+    ) -> Optional[GuildChannel]:
         clear_permissions = []
         for room in self.roleplay.rooms:
             room_channel = self.find_channel_by_name(
@@ -410,6 +416,7 @@ class BasePlugin(Plugin):
             player,
             overwrite=PermissionOverwrite(read_messages=True)
         )
+        return new_channel
 
     @staticmethod
     async def _toggle_role(member: Member, role: Role) -> bool:

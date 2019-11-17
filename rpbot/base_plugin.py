@@ -221,6 +221,7 @@ class BasePlugin(Plugin):
         await message.delete()
 
     async def move(self, message: Message, room: Optional[str]):
+        await message.delete()
         connections = State.get_config(message.guild.id)['connections']
         channel: TextChannel = message.channel
         destinations = self._list_destinations(connections, channel.name)
@@ -235,18 +236,25 @@ class BasePlugin(Plugin):
                     'The following destinations are available from here:\n'
                     + destination_list
                 ) if destination_list
-                else 'No destinations are currently available.'
+                else 'No destinations are currently available.',
+                delete_after=60*60
             )
             return
 
         for destination, locked in destinations:
             if destination == room:
                 if locked:
-                    await channel.send(f'{room} is currently locked off.')
+                    await channel.send(
+                        f'{room} is currently locked off.',
+                        delete_after=60*60
+                    )
                     return
                 break
         else:
-            await channel.send(f'Cannot reach {room} from here.')
+            await channel.send(
+                f'Cannot reach {room} from here.',
+                delete_after=60*60
+            )
             return
 
         move_timers = State.get_var(message.guild.id, 'move_timers')
@@ -263,7 +271,8 @@ class BasePlugin(Plugin):
                     f'{int(minutes)} minutes' if minutes
                     else f'{int(time_remaining)} seconds'
                 )
-                + ' before moving again.'
+                + ' before moving again.',
+                delete_after=60*60
             )
             return
 
@@ -277,7 +286,6 @@ class BasePlugin(Plugin):
         await new_channel.send(
             f'{message.author.mention} moves in from {channel.name}'
         )
-        await message.delete()
 
     async def move_all(self, message: Message, room: str):
         for player in State.get_player_role(message.guild.id).members:
@@ -289,14 +297,17 @@ class BasePlugin(Plugin):
             await self._move_player(player, room)
 
     async def roll_dice(self, message: Message, num_dice: int):
+        await message.delete()
         if num_dice < 1:
             await message.channel.send(
-                'You need to specify a positive number of dice to roll.'
+                'You need to specify a positive number of dice to roll.',
+                delete_after=60*60
             )
             return
         if num_dice > 20:
             await message.channel.send(
-                'You can only roll a maximum of 20 dice.'
+                'You can only roll a maximum of 20 dice.',
+                delete_after=60*60
             )
             return
         results = []

@@ -442,7 +442,9 @@ class BasePlugin(Plugin):
         )
         await new_channel.set_permissions(
             player,
-            overwrite=PermissionOverwrite(read_messages=True)
+            overwrite=PermissionOverwrite(
+                read_messages=True, send_messages=True
+            )
         )
         return new_channel
 

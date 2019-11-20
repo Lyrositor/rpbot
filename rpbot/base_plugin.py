@@ -23,6 +23,7 @@ GM_CMD = 'gm'
 MOVE_ALL_CMD = 'move_all'
 MOVE_CMD = 'move'
 MOVE_FORCE_CMD = 'move_force'
+MOVE_RESET_CMD = 'move_reset'
 ROLL_CMD = 'roll'
 LOCK_CMD = 'lock'
 UNLOCK_CMD = 'unlock'
@@ -101,6 +102,13 @@ class BasePlugin(Plugin):
             help_msg='Forces a player to move to the specified location.',
             requires_admin=True,
             params=[PluginCommandParam('room'), PluginCommandParam('user')]
+        )
+        self.register_command(
+            name=MOVE_RESET_CMD,
+            handler=self.move_reset,
+            help_msg='Resets specified players\' cooldown.',
+            requires_admin=True,
+            params=[PluginCommandParam('user')]
         )
         self.register_command(
             name=ROLL_CMD,
@@ -295,6 +303,15 @@ class BasePlugin(Plugin):
     async def move_force(self, message: Message, room: str, user: Optional[str]):
         for player in message.mentions:
             await self._move_player(player, room)
+
+    # noinspection PyUnusedLocal
+    async def move_reset(self, message, user: Optional[str]):
+        move_timers = State.get_var(message.guild.id, 'move_timers')
+        if not move_timers:
+            move_timers = defaultdict(lambda: datetime.min)
+        for player in message.mentions:
+            move_timers[player.id] = datetime.min
+        State.set_var(message.guild.id, 'move_timers', move_timers)
 
     async def roll_dice(self, message: Message, num_dice: int):
         await message.delete()

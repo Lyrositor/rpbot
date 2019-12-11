@@ -525,7 +525,7 @@ class BasePlugin(Plugin):
     ) -> Optional[GuildChannel]:
         clear_permissions = []
         sections = set()
-        for name, room in self.roleplay.rooms.iterms():
+        for name, room in self.roleplay.rooms.items():
             room_channel = self.find_channel_by_name(
                 player.guild, name, room.section
             )

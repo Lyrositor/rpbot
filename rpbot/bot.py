@@ -110,7 +110,8 @@ class RoleplayBot(Client):
             if connection.name not in config['connections']:
                 config['connections'][connection.name] = {
                     'h': connection.hidden,
-                    'l': connection.locked
+                    'l': connection.locked,
+                    'k': []
                 }
                 modified_config = True
         if modified_config:
@@ -151,7 +152,12 @@ class RoleplayBot(Client):
             if room.section:
                 if room.section not in sections:
                     sections[room.section] = await guild.create_category(
-                        room.section
+                        room.section,
+                        overwrites={
+                            guild.default_role: PermissionOverwrite(
+                                read_messages=False
+                            )
+                        }
                     )
                 section = sections[room.section]
                 source = section

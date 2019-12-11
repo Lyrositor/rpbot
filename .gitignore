@@ -134,4 +134,5 @@ dmypy.json
 config.toml
 
 # Roleplays
-data/roleplays/fadedcity.yaml
+data/roleplays/*.yaml
+!data/roleplays/demo.yaml

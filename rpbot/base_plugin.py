@@ -4,8 +4,7 @@ from datetime import datetime, timedelta
 from random import randint
 from typing import TYPE_CHECKING, Optional, Iterable, Any, Dict, Tuple
 
-from discord import Message, PermissionOverwrite, Role, Member, TextChannel, \
-    Guild
+from discord import Message, Role, Member, TextChannel, Guild
 from discord.abc import GuildChannel
 
 from rpbot.data.roleplay import Roleplay
@@ -25,9 +24,11 @@ MOVE_CMD = 'move'
 MOVE_FORCE_CMD = 'move_force'
 MOVE_RESET_CMD = 'move_reset'
 ROLL_CMD = 'roll'
+FATE_CMD = 'fate'
 LOCK_CMD = 'lock'
 UNLOCK_CMD = 'unlock'
 REVEAL_CMD = 'reveal'
+KEY_CMD = 'key'
 
 
 class BasePlugin(Plugin):
@@ -38,6 +39,11 @@ class BasePlugin(Plugin):
         4: ':four:',
         5: ':five:',
         6: ':six:',
+    }
+    FATE_EMOJI = {
+        -1: 'heavy_minus_sign',
+        0: 'black_square_button',
+        1: 'heavy_plus_sign'
     }
 
     def __init__(self, bot: 'RoleplayBot', roleplay: Roleplay):
@@ -119,18 +125,25 @@ class BasePlugin(Plugin):
             params=[PluginCommandParam('dice', True, 1, int)]
         )
         self.register_command(
+            name=FATE_CMD,
+            handler=self.roll_dice_fate,
+            help_msg='Rolls the specified number of FATE dice.',
+            requires_player=False,
+            requires_room=False,
+            params=[PluginCommandParam('dice', True, 1, int)]
+        )
+        self.register_command(
             name=LOCK_CMD,
             handler=self.lock,
-            help_msg='Locks a connection in the current room.',
-            requires_admin=True,
+            help_msg='Locks a connection in the current room. Requires a key.',
             requires_room=True,
             params=[PluginCommandParam('location')]
         )
         self.register_command(
             name=UNLOCK_CMD,
             handler=self.unlock,
-            help_msg='Unlocks a connection in the current room.',
-            requires_admin=True,
+            help_msg=
+            'Unlocks a connection in the current room. Requires a key.',
             requires_room=True,
             params=[PluginCommandParam('location')]
         )
@@ -141,6 +154,17 @@ class BasePlugin(Plugin):
             requires_admin=True,
             requires_room=True,
             params=[PluginCommandParam('location')]
+        )
+        self.register_command(
+            name=KEY_CMD,
+            handler=self.toggle_key,
+            help_msg='Gives or takes a key from a player.',
+            requires_admin=True,
+            params=[
+                PluginCommandParam('room1'),
+                PluginCommandParam('romm2'),
+                PluginCommandParam('user')
+            ]
         )
 
         if roleplay:
@@ -300,7 +324,9 @@ class BasePlugin(Plugin):
             await self._move_player(player, room)
 
     # noinspection PyUnusedLocal
-    async def move_force(self, message: Message, room: str, user: Optional[str]):
+    async def move_force(
+            self, message: Message, room: str, user: Optional[str]
+    ):
         for player in message.mentions:
             await self._move_player(player, room)
 
@@ -338,6 +364,31 @@ class BasePlugin(Plugin):
             + ' '.join(results)
         )
 
+    async def roll_dice_fate(self, message: Message, num_dice: int):
+        await message.delete()
+        if num_dice < 1:
+            await message.channel.send(
+                'You need to specify a positive number of dice to roll.',
+                delete_after=60 * 60
+            )
+            return
+        if num_dice > 20:
+            await message.channel.send(
+                'You can only roll a maximum of 20 dice.',
+                delete_after=60 * 60
+            )
+            return
+        results = []
+        total = 0
+        for i in range(num_dice):
+            result = randint(-1, 1)
+            total += result
+            results.append(self.FATE_EMOJI[result])
+        await message.channel.send(
+            f'{message.author.mention} rolled **{total}**: '
+            + ' '.join(results)
+        )
+
     async def lock(self, message: Message, location: str):
         await self._lock_or_unlock(message, location, True)
 
@@ -350,14 +401,16 @@ class BasePlugin(Plugin):
         connection = self.roleplay.get_connection(channel.name, location)
         if not connection:
             await channel.send(
-                f'No connection from {channel.name} to {location}.'
+                f'No connection from {channel.name} to {location}.',
+                delete_after=60*60
             )
             return
 
         if not connection.hidden:
             await channel.send(
                 f'Connection from {channel.name} to {location} is already '
-                'revealed.'
+                'revealed.',
+                delete_after=60*60
             )
         else:
             config['connections'][connection.name]['h'] = False
@@ -369,6 +422,36 @@ class BasePlugin(Plugin):
             )
             await message.delete()
 
+    # noinspection PyUnusedLocal
+    async def toggle_key(
+            self, message: Message, room1: str, room2: str, user: str
+    ):
+        connection = self.roleplay.get_connection(room1, room2)
+        if not connection:
+            await message.channel.send(
+                f'No connection from {room1} to {room2}.'
+            )
+            return
+
+        config = State.get_config(message.guild.id)
+        keys = config['connections'][connection.name]['k']
+        for member in message.mentions:
+            if member.id not in keys:
+                keys.append(member.id)
+                await message.channel.send(
+                    f'{member.mention} can now lock and unlock the connection '
+                    f'from {room1} to {room2}.'
+                )
+            else:
+                keys.remove(member.id)
+                await message.channel.send(
+                    f'{member.mention} can no longer lock and unlock the '
+                    f'connection from {room1} to {room2}.'
+                )
+        State.save_config(message.guild.id, config)
+        await self.bot.save_guild_config(message.guild, config)
+        await message.delete()
+
     async def _lock_or_unlock(
             self, message: Message, location: str, lock: bool = True
     ):
@@ -377,14 +460,27 @@ class BasePlugin(Plugin):
         connection = self.roleplay.get_connection(channel.name, location)
         if not connection:
             await channel.send(
-                f'No connection from {channel.name} to {location}.'
+                f'No connection from {channel.name} to {location}.',
+                delete_after=60*60
             )
             return
-        locked = config['connections'][connection.name]['l']
+        connection_config = config['connections'][connection.name]
+
+        if not State.is_admin(message.author) \
+                and message.author.id not in connection_config['k']:
+            await channel.send(
+                f'{message.author.mention} does not have the key to '
+                f'{location}.',
+                delete_after=60*60
+            )
+            return
+
+        locked = connection_config['l']
         if locked and lock or not locked and not lock:
             await channel.send(
                 f'Access to {location} is already '
-                f'{"locked" if lock else "unlocked"}.'
+                f'{"locked" if lock else "unlocked"}.',
+                delete_after=60*60
             )
             return
         self._update_connection(
@@ -405,9 +501,9 @@ class BasePlugin(Plugin):
             if state['h']:
                 continue
             if room == connection.room1:
-                yield (connection.room2, state['l'])
+                yield connection.room2, state['l']
             elif room == connection.room2:
-                yield (connection.room1,  state['l'])
+                yield connection.room1,  state['l']
 
     def _update_connection(
             self,
@@ -428,14 +524,19 @@ class BasePlugin(Plugin):
             self, player: Member, dest_room: str
     ) -> Optional[GuildChannel]:
         clear_permissions = []
-        for room in self.roleplay.rooms:
+        sections = set()
+        for name, room in self.roleplay.rooms.iterms():
             room_channel = self.find_channel_by_name(
-                player.guild, room, self.roleplay.rooms[room].section
+                player.guild, name, room.section
             )
             # noinspection PyTypeChecker
             clear_permissions.append(
                 room_channel.set_permissions(player, overwrite=None)
             )
+            sections.add(room.section)
+        for category in player.guild.categories:
+            if category.name in sections:
+                category.set_permissions(player, overwrite=None)
         await asyncio.wait(clear_permissions)
         new_channel = self.find_channel_by_name(
             player.guild, dest_room, self.roleplay.rooms[dest_room].section
@@ -445,6 +546,11 @@ class BasePlugin(Plugin):
             read_messages=True,
             send_messages=True
         )
+        if new_channel.category:
+            new_channel.category.set_permissions(
+                player,
+                read_messages=True
+            )
         return new_channel
 
     @staticmethod

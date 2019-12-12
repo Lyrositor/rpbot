@@ -136,7 +136,7 @@ class PluginCommand:
         if not self.enabled:
             raise Exception(f'Command {self.PREFIX}{self.name} is disabled')
 
-        param_values = params.split(' ', len(self.params)) if params else []
+        param_values = params.split(' ', len(self.params) - 1) if params else []
         processed_params = []
         for i, param in enumerate(self.params):
             value = param_values[i] if i < len(param_values) else None

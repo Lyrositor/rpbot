@@ -543,8 +543,7 @@ class BasePlugin(Plugin):
         )
         await new_channel.set_permissions(
             player,
-            read_messages=True,
-            send_messages=True
+            read_messages=True
         )
         if new_channel.category:
             new_channel.category.set_permissions(

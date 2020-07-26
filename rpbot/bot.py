@@ -44,9 +44,18 @@ class RoleplayBot(Client):
                         and channel.last_message_id is not None:
                     # noinspection PyBroadException
                     try:
-                        config_message =\
-                            await channel.fetch_message(channel.last_message_id)
-                        config = json.loads(config_message.content[8:-3])
+                        config_messages = await channel.history(
+                            limit=20, oldest_first=False
+                        ).flatten()
+                        config_json = ''
+                        for config_message in config_messages:
+                            message_json = config_message.content[4:-3]
+                            if message_json.startswith('^'):
+                                config_json = message_json[1:] + config_json
+                            else:
+                                config_json = message_json + config_json
+                                break
+                        config = json.loads(config_json)
                         await self.refresh_from_config(guild, config)
                     except NotFound:
                         logging.warning(
@@ -204,8 +213,16 @@ class RoleplayBot(Client):
                     )
                 }
             )
-        json_config = json.dumps(config, separators=(',',':'))
-        await config_channel.send(f'```json\n{json_config}```')
+        json_config = json.dumps(config, separators=(',', ':'))
+        i = 0
+        while True:
+            json_chunk = json_config[i*1990:(i+1)*1990]
+            if not json_chunk:
+                break
+            await config_channel.send(
+                f'```\n{"^" if i != 0 else ""}{json_chunk}```'
+            )
+            i += 1
 
     @staticmethod
     async def create_or_update_role(

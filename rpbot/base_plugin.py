@@ -41,9 +41,9 @@ class BasePlugin(Plugin):
         6: ':six:',
     }
     FATE_EMOJI = {
-        -1: 'heavy_minus_sign',
-        0: 'black_square_button',
-        1: 'heavy_plus_sign'
+        -1: ':heavy_minus_sign:',
+        0: ':black_square_button:',
+        1: ':heavy_plus_sign:'
     }
 
     def __init__(self, bot: 'RoleplayBot', roleplay: Roleplay):
@@ -98,7 +98,7 @@ class BasePlugin(Plugin):
         self.register_command(
             name=MOVE_ALL_CMD,
             handler=self.move_all,
-            help_msg='Marks or unmarks a member as an observer of the game.',
+            help_msg='Moves all players to a location.',
             requires_admin=True,
             params=[PluginCommandParam('room')]
         )
@@ -162,7 +162,7 @@ class BasePlugin(Plugin):
             requires_admin=True,
             params=[
                 PluginCommandParam('room1'),
-                PluginCommandParam('romm2'),
+                PluginCommandParam('room2'),
                 PluginCommandParam('user')
             ]
         )

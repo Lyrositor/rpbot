@@ -9,7 +9,7 @@ from typing import List, Dict, Type, Any
 import discord
 import yaml
 from discord import Client, CategoryChannel, TextChannel, PermissionOverwrite, \
-    Guild, Message, NotFound, Color
+    Guild, Message, NotFound, Color, Forbidden
 
 from rpbot.base_plugin import BasePlugin
 from rpbot.data.role import Role
@@ -234,11 +234,14 @@ class RoleplayBot(Client):
         )
         if not role:
             role = await guild.create_role(name=role_spec.label)
-        await role.edit(
-            color=Color(role_spec.color),
-            hoist=True,
-            mentionable=True
-        )
+        try:
+            await role.edit(
+                color=Color(role_spec.color),
+                hoist=True,
+                mentionable=True
+            )
+        except Forbidden:
+            logging.warning("Cannot edit role, skipping")
         return role
 
     def _get_roleplay_for_guild(self, guild_id: int):

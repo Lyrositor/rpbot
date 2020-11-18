@@ -214,16 +214,14 @@ class RoleplayBot(Client):
         last_message = config_channel.last_message
         json_config = json.dumps(config, separators=(',', ':'))
         i = 0
+        async for message in config_channel.history(before=last_message):
+            await message.delete()
+        if last_message:
+            await last_message.delete()
         while True:
             json_chunk = json_config[i*1990:(i+1)*1990]
             if not json_chunk:
                 break
-            async for message in config_channel.history(
-                before=last_message
-            ):
-                await message.delete()
-            if last_message:
-                await last_message.delete()
             await config_channel.send(
                 f'```\n{"^" if i != 0 else ""}{json_chunk}```'
             )

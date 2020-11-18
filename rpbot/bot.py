@@ -9,7 +9,7 @@ from typing import List, Dict, Type, Any
 import discord
 import yaml
 from discord import Client, CategoryChannel, TextChannel, PermissionOverwrite, \
-    Guild, Message, NotFound, Color, Forbidden
+    Guild, Message, NotFound, Color, Forbidden, Intents
 
 from rpbot.base_plugin import BasePlugin
 from rpbot.data.role import Role
@@ -27,7 +27,9 @@ class RoleplayBot(Client):
             roleplays_dir: str,
             admins: List[str]
     ):
-        super().__init__()
+        intents = Intents.default()
+        intents.members = True
+        super().__init__(intents=intents)
 
         self.admins = admins
         self.plugins = self._load_plugins(plugins_dir)
@@ -63,7 +65,7 @@ class RoleplayBot(Client):
                         )
                     except json.JSONDecodeError:
                         logging.warning('Config is invalid, ignoring guild')
-                    except:
+                    except Exception:
                         logging.exception(
                             'Encountered unexpected error while setting up'
                         )
@@ -133,6 +135,7 @@ class RoleplayBot(Client):
         if plugin_configs:
             for plugin_id, plugin_config \
                     in plugin_configs.items():
+                # noinspection PyArgumentList
                 plugins.append(
                     self.plugins[plugin_id](
                         self,
@@ -143,7 +146,6 @@ class RoleplayBot(Client):
         State.save_plugins(guild.id, plugins)
 
         # Ensure the server state matches
-        base_pos = guild.me.top_role.position
         gm_role = await self.create_or_update_role(guild, roleplay.roles['gm'])
         player_role = await self.create_or_update_role(
             guild, roleplay.roles['player']
@@ -258,7 +260,9 @@ class RoleplayBot(Client):
                 plugin_name, plugin_file
             )
             plugin = importlib.util.module_from_spec(plugin_spec)
+            # noinspection PyUnresolvedReferences
             plugin_spec.loader.exec_module(plugin)
+            # noinspection PyUnresolvedReferences
             plugins[plugin_name] = plugin.PLUGIN
         return plugins
 

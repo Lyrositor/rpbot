@@ -164,11 +164,6 @@ class RoleplayBot(Client):
                 if room.section not in sections:
                     sections[room.section] = await guild.create_category(
                         room.section,
-                        overwrites={
-                            guild.default_role: PermissionOverwrite(
-                                read_messages=False
-                            )
-                        }
                     )
                 section = sections[room.section]
                 source = section
@@ -180,6 +175,7 @@ class RoleplayBot(Client):
                 guild.default_role: PermissionOverwrite(
                     read_messages=False
                 ),
+                self.user: PermissionOverwrite(read_messages=True),
                 gm_role: PermissionOverwrite(
                     read_messages=True,
                     send_messages=True
@@ -200,27 +196,34 @@ class RoleplayBot(Client):
                     channel_id, topic=room.description, overwrites=overwrites
                 )
 
-    @classmethod
-    async def save_guild_config(cls, guild: Guild, config: Dict[str, Any]):
+    async def save_guild_config(self, guild: Guild, config: Dict[str, Any]):
         for channel in guild.text_channels:
-            if channel.name == cls.BOT_CONFIG_CHANNEL:
+            if channel.name == self.BOT_CONFIG_CHANNEL:
                 config_channel = channel
                 break
         else:
             config_channel = await guild.create_text_channel(
-                cls.BOT_CONFIG_CHANNEL,
+                self.BOT_CONFIG_CHANNEL,
                 overwrites={
                     guild.default_role: PermissionOverwrite(
                         read_messages=False
-                    )
+                    ),
+                    self.user: PermissionOverwrite(read_messages=True)
                 }
             )
+        last_message = config_channel.last_message
         json_config = json.dumps(config, separators=(',', ':'))
         i = 0
         while True:
             json_chunk = json_config[i*1990:(i+1)*1990]
             if not json_chunk:
                 break
+            async for message in config_channel.history(
+                before=last_message
+            ):
+                await message.delete()
+            if last_message:
+                await last_message.delete()
             await config_channel.send(
                 f'```\n{"^" if i != 0 else ""}{json_chunk}```'
             )

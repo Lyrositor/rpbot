@@ -5,7 +5,6 @@ from random import randint
 from typing import TYPE_CHECKING, Optional, Iterable, Any, Dict, Tuple
 
 from discord import Message, Role, Member, TextChannel, Guild
-from discord.abc import GuildChannel
 
 from rpbot.data.roleplay import Roleplay
 from rpbot.plugin import Plugin, PluginCommandParam
@@ -309,7 +308,9 @@ class BasePlugin(Plugin):
             return
 
         connection = self.roleplay.get_connection(channel.name, room)
-        new_channel = await self._move_player(message.author, room)
+        new_channel = await self._move_player(
+            message.author, room, message.channel
+        )
         move_timers[message.author.id] = datetime.now() + timedelta(
             minutes=connection.timer
         )
@@ -521,23 +522,24 @@ class BasePlugin(Plugin):
             connection_config['h'] = hidden
 
     async def _move_player(
-            self, player: Member, dest_room: str
-    ) -> Optional[GuildChannel]:
-        clear_permissions = []
-        sections = set()
-        for name, room in self.roleplay.rooms.items():
-            room_channel = self.find_channel_by_name(
-                player.guild, name, room.section
-            )
-            # noinspection PyTypeChecker
-            clear_permissions.append(
-                room_channel.set_permissions(player, overwrite=None)
-            )
-            sections.add(room.section)
-        for category in player.guild.categories:
-            if category.name in sections:
-                category.set_permissions(player, overwrite=None)
-        await asyncio.wait(clear_permissions)
+            self,
+            player: Member,
+            dest_room: str,
+            from_channel: Optional[TextChannel] = None
+    ) -> Optional[TextChannel]:
+        if from_channel:
+            await from_channel.set_permissions(player, overwrite=None)
+        else:
+            clear_permissions = []
+            for name, room in self.roleplay.rooms.items():
+                room_channel = self.find_channel_by_name(
+                    player.guild, name, room.section
+                )
+                # noinspection PyTypeChecker
+                clear_permissions.append(
+                    room_channel.set_permissions(player, overwrite=None)
+                )
+            await asyncio.wait(clear_permissions)
         new_channel = self.find_channel_by_name(
             player.guild, dest_room, self.roleplay.rooms[dest_room].section
         )
@@ -545,11 +547,6 @@ class BasePlugin(Plugin):
             player,
             read_messages=True
         )
-        if new_channel.category:
-            new_channel.category.set_permissions(
-                player,
-                read_messages=True
-            )
         return new_channel
 
     @staticmethod

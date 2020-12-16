@@ -61,7 +61,7 @@ class State:
         return cls._check_role(member, 2)
 
     @classmethod
-    def get_config(cls, guild_id: int) -> Dict[str, Any]:
+    def get_config(cls, guild_id: int) -> Optional[Dict[str, Any]]:
         cls._setup()
         return cls._instance.configs[guild_id] \
             if guild_id in cls._instance.configs else None

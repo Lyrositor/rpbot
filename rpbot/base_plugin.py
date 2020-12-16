@@ -28,6 +28,7 @@ LOCK_CMD = 'lock'
 UNLOCK_CMD = 'unlock'
 REVEAL_CMD = 'reveal'
 KEY_CMD = 'key'
+RELOAD_CMD = 'reload'
 
 
 class BasePlugin(Plugin):
@@ -164,6 +165,13 @@ class BasePlugin(Plugin):
                 PluginCommandParam('room2'),
                 PluginCommandParam('user')
             ]
+        )
+        self.register_command(
+            name=RELOAD_CMD,
+            handler=self.reload,
+            help_msg='Reloads the roleplay from its YAML definition.',
+            requires_admin=True,
+            params=[]
         )
 
         if roleplay:
@@ -452,6 +460,13 @@ class BasePlugin(Plugin):
         State.save_config(message.guild.id, config)
         await self.bot.save_guild_config(message.guild, config)
         await message.delete()
+
+    async def reload(self, message: Message) -> None:
+        self.bot.reload()
+        await self.bot.refresh_from_config(
+            message.guild, State.get_config(message.guild.id)
+        )
+        await message.channel.send('Roleplay definition and plugins reloaded.')
 
     async def _lock_or_unlock(
             self, message: Message, location: str, lock: bool = True

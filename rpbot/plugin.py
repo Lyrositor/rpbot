@@ -1,6 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Callable, Optional, List, Any, Dict, TYPE_CHECKING
+from functools import wraps
+from typing import Callable, Optional, List, Any, Dict, TYPE_CHECKING, Tuple
 
 from discord import Message, Guild
 from discord.abc import GuildChannel
@@ -64,6 +65,9 @@ class Plugin(ABC):
             ):
                 return True
             await spec.run(message, params)
+        except CommandException as e:
+            await message.channel.send(str(e))
+            await message.add_reaction('🚫')
         except Exception:
             logging.exception(
                 f'Failed to process command {full_command} '
@@ -91,7 +95,7 @@ class Plugin(ABC):
                 return channel
         return None
 
-    def get_help(self, is_admin):
+    def get_help(self, is_admin: bool) -> str:
         return '\n'.join(
             str(self.commands[c]) for c in sorted(self.commands.keys())
             if (not self.commands[c].requires_admin or is_admin)
@@ -128,18 +132,41 @@ class PluginCommand:
 
         if self.requires_admin and not is_admin\
                 or self.requires_player and not (is_player or is_admin):
-            raise Exception(
+            raise CommandException(
                 f'{message.author} is not authorised to use command '
                 f'{self.PREFIX}{self.name}'
             )
 
         if not self.enabled:
-            raise Exception(f'Command {self.PREFIX}{self.name} is disabled')
+            raise CommandException(
+                f'Command {self.PREFIX}{self.name} is disabled'
+            )
 
-        param_values = params.split(' ', len(self.params) - 1) if params else []
+        # Messy code to primitively try to handle quoted strings
+        # The last argument is always taken entirely as-is, quotes included
+        param_values = []
+        idx = 0
+        if params is not None:
+            for i, param in enumerate(self.params):
+                is_last = i == (len(self.params) - 1)
+                while idx < len(params):
+                    if is_last and not param.collect:
+                        param_value, idx = params[idx:], len(params)
+                    else:
+                        param_value, idx = _get_param_value(params, idx)
+                    param_values.append(param_value.strip())
+                    if not param.collect:
+                        break
+
         processed_params = []
         for i, param in enumerate(self.params):
-            value = param_values[i] if i < len(param_values) else None
+            if i < len(param_values):
+                if param.collect:
+                    value = param_values[i:]
+                else:
+                    value = param_values[i]
+            else:
+                value = None
             processed_params.append(param.process(value))
         await self.handler(message, *processed_params)
 
@@ -150,7 +177,7 @@ class PluginCommand:
                 f'*{p.name}* ' if p.optional else f'{p.name} '
                 for p in self.params
             ) \
-            + (f'**- {self.help}' if self.help else '')
+            + (f'**- {self.help}' if self.help else '**')
 
 
 class PluginCommandParam:
@@ -159,18 +186,61 @@ class PluginCommandParam:
             name: str,
             optional: bool = False,
             default: Any = None,
-            converter: Optional[Callable] = None
+            converter: Optional[Callable] = None,
+            collect: bool = False
     ):
         self.name = name
         self.optional = optional
         self.default = default
         self.converter = converter
+        self.collect = collect
 
     def process(self, value) -> Any:
         if not value:
             if self.optional:
                 return self.default
-            raise ValueError(
-                f'Invalid value for parameter {self.name}: "{value}"'
+            raise CommandException(
+                f'Invalid value for parameter "{self.name}": "{value}"'
             )
         return self.converter(value) if self.converter else value
+
+
+class CommandException(Exception):
+    pass
+
+
+def delete_message(func: Callable) -> Callable:
+    @wraps(func)
+    async def new_func(self, message: Message, *args, **kwargs):
+        result = await func(self, message, *args, **kwargs)
+        await message.delete()
+        return result
+    return new_func
+
+
+def _get_param_value(string: str, idx: int) -> Tuple[str, int]:
+    idx = _consume_whitespace(string, idx)
+    c = string[idx]
+    if c == '"':
+        idx += 1
+        param, idx = _consume_until(string, idx, '"')
+        idx += 1
+        if idx < len(string) and string[idx] != " ":
+            raise CommandException(f'Invalid parameters: {string}')
+    else:
+        param, idx = _consume_until(string, idx, ' ')
+    return param, idx
+
+
+def _consume_whitespace(string: str, idx: int) -> int:
+    while idx < len(string) and string[idx] == ' ':
+        idx += 1
+    return idx
+
+
+def _consume_until(string: str, idx: int, char: str) -> Tuple[str, int]:
+    bit = ''
+    while idx < len(string) and string[idx] != char:
+        bit += string[idx]
+        idx += 1
+    return bit, idx

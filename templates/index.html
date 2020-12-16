@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}{% if roleplay %}{{ roleplay.name }}{% else %}Home{% endif %}{% endblock %}
+
+{% block content %}
+  {% if roleplay %}
+    <h1>{{ roleplay.name }}</h1>
+    <p style="white-space: pre-line">{{ roleplay.description }}</p>
+    <h2>Characters</h2>
+    {% if roleplay.characters %}
+      <div class="container">
+        <div class="row row-cols-1 row-cols-md-3">
+          {% for character in roleplay.characters %}
+            <div class="col p-3">
+              <div class="card h-100 text-center">
+                {% if character.avatar %}<img src="{{ character.avatar }}" class="card-img-top" alt="Avatar" />{% endif %}
+                <div class="card-body">
+                  <h4 class="card-title">{{ character.name }}</h4>
+                  <a href="/{{ roleplay.id }}/character/{{ character.user_id }}/{{ character.id }}" class="btn btn-primary">View Character Sheet</a>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% else %}
+      <p><em>No characters available.</em></p>
+    {% endif %}
+  {% else %}
+    <p>Select a roleplay from the top-right to view.</p>
+  {% endif %}
+{% endblock %}

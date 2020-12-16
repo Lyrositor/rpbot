@@ -3,8 +3,9 @@ import json
 import logging
 import os
 import sys
+from asyncio import BaseEventLoop
 from glob import glob
-from typing import List, Dict, Type, Any
+from typing import List, Dict, Type, Any, Optional
 
 import discord
 import yaml
@@ -16,6 +17,7 @@ from rpbot.data.role import Role
 from rpbot.data.roleplay import Roleplay
 from rpbot.plugin import Plugin, PluginCommand
 from rpbot.state import State
+from rpbot.utils import reply
 
 
 class RoleplayBot(Client):
@@ -25,17 +27,25 @@ class RoleplayBot(Client):
             self,
             plugins_dir: str,
             roleplays_dir: str,
-            admins: List[str]
+            admins: List[str],
+            loop: Optional[BaseEventLoop] = None
     ):
         intents = Intents.default()
         intents.members = True
-        super().__init__(intents=intents)
+        super().__init__(intents=intents, loop=loop)
 
         self.admins = admins
-        self.plugins = self._load_plugins(plugins_dir)
-        self.roleplays = self._load_roleplays(roleplays_dir)
+        self.plugins_dir = plugins_dir
+        self.roleplays_dir = roleplays_dir
+        self.plugins = {}
+        self.roleplays = {}
+        self.reload()
 
-    def run(self, token: str):
+    def reload(self) -> None:
+        self.plugins = self.load_plugins(self.plugins_dir)
+        self.roleplays = self.load_roleplays(self.roleplays_dir)
+
+    def run(self, token: str) -> None:
         super().run(token)
 
     async def on_ready(self):
@@ -80,10 +90,7 @@ class RoleplayBot(Client):
         if message.guild is None:
             return
 
-        plugins = [
-            BasePlugin(self,  self._get_roleplay_for_guild(message.guild.id))
-        ]
-        plugins += State.get_plugins(message.guild.id)
+        plugins = self.get_all_plugins(message.guild)
 
         # Do a special case for !help, since we need an overview of all plugins
         # to make it complete
@@ -97,11 +104,18 @@ class RoleplayBot(Client):
                 help_message = \
                     'The following commands are currently available:\n' \
                     + help_message
-            await message.channel.send(help_message)
+            await reply(message, help_message)
             return
 
         for plugin in plugins:
             await plugin.process_message(message)
+
+    def get_all_plugins(self, guild: Guild) -> List[Plugin]:
+        plugins = [
+            BasePlugin(self, self.get_roleplay_for_guild(guild.id))
+        ]
+        plugins += State.get_plugins(guild.id)
+        return plugins
 
     async def refresh_from_config(
             self, guild: Guild, config: Dict[str, Any], force_reset=False
@@ -211,13 +225,13 @@ class RoleplayBot(Client):
                     self.user: PermissionOverwrite(read_messages=True)
                 }
             )
-        last_message = config_channel.last_message
         json_config = json.dumps(config, separators=(',', ':'))
         i = 0
-        async for message in config_channel.history(before=last_message):
-            await message.delete()
-        if last_message:
-            await last_message.delete()
+        # last_message = config_channel.last_message
+        # async for message in config_channel.history(before=last_message):
+        #     await message.delete()
+        # if last_message:
+        #     await last_message.delete()
         while True:
             json_chunk = json_config[i*1990:(i+1)*1990]
             if not json_chunk:
@@ -247,13 +261,13 @@ class RoleplayBot(Client):
             logging.warning("Cannot edit role, skipping")
         return role
 
-    def _get_roleplay_for_guild(self, guild_id: int):
+    def get_roleplay_for_guild(self, guild_id: int):
         config = State.get_config(guild_id)
         return self.roleplays[config['rp']] \
             if config and 'rp' in config and config['rp'] else None
 
     @staticmethod
-    def _load_plugins(plugins_dir: str) -> Dict[str, Type[Plugin]]:
+    def load_plugins(plugins_dir: str) -> Dict[str, Type[Plugin]]:
         plugins = {}
         for plugin_file in glob(os.path.join(plugins_dir, '*.py')):
             plugin_name = os.path.splitext(os.path.basename(plugin_file))[0]
@@ -268,7 +282,7 @@ class RoleplayBot(Client):
         return plugins
 
     @staticmethod
-    def _load_roleplays(roleplays_dir: str) -> Dict[str, Roleplay]:
+    def load_roleplays(roleplays_dir: str) -> Dict[str, Roleplay]:
         roleplays = {}
         for roleplay_file in glob(os.path.join(roleplays_dir, '*.yaml')):
             with open(roleplay_file) as f:

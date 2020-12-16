@@ -13,6 +13,7 @@ class Roleplay(YAMLObject):
     def __init__(
             self,
             id: str,
+            description: str,
             plugins: Dict[str, Dict[str, Any]],
             commands: List[str],
             roles: Dict[str, Role],
@@ -21,6 +22,7 @@ class Roleplay(YAMLObject):
             connections: List[Connection]
     ):
         self.id = id
+        self.description = description
         self.plugins = plugins
         self.commands = commands
         self.roles = roles

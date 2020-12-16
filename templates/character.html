@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}{{ roleplay.name }} - {{ character.name }}{% endblock %}
+
+{% block content %}
+  {% if character %}
+    <h2>{{ character.name }}</h2>
+    {% if character.status %}
+      <p class="lead">{{ character.status }}</p>
+    {% endif %}
+    {% if character.avatar %}<img src="{{ character.avatar }}" class="rounded float-right" style="max-width: 25%" alt="Avatar" />{% endif %}
+    <p><strong>Age:</strong> {% if character.age %}{{ character.age }}{% else %}<em>Unknown</em>{% endif %}</p>
+    <p><strong>Appearance:</strong> <span style="white-space: pre-line;">{% if character.appearance %}{{ character.appearance }}{% else %}<em>Unknown</em>{% endif %}</span></p>
+    <p><strong>Action Points:</strong> <span class="badge bg-dark text-light">{{ character.actions }}</span></p>
+    <p><strong>Abilities:</strong></p>
+    <ul>
+      <li>Force: <span class="badge bg-dark text-light">{{ character.abilities.force }}</span></li>
+      <li>Presence: <span class="badge bg-dark text-light">{{ character.abilities.presence }}</span></li>
+      <li>Guts: <span class="badge bg-dark text-light">{{ character.abilities.guts }}</span></li>
+      <li>Wits: <span class="badge bg-dark text-light">{{ character.abilities.wits }}</span></li>
+      <li>Sensation: <span class="badge bg-dark text-light">{{ character.abilities.sensation }}</span></li>
+      <li>Reflection: <span class="badge bg-dark text-light">{{ character.abilities.reflection }}</span></li>
+    </ul>
+    <p><strong>Inventory:</strong> <a class="btn btn-secondary" data-toggle="collapse" href="#inventory" role="button" aria-expanded="false" aria-controls="inventory">Spoiler</a></p>
+    <div class="collapse" id="inventory">
+      <div class="card card-body">
+        {% if character.inventory %}
+          <ul>
+            {% for item in character.inventory %}<li>{{ item }}</li>{% endfor %}
+          </ul>
+        {% else %}
+          <p><em>No items in inventory.</em></p>
+        {% endif %}
+      </div>
+    </div>
+    <p><strong>Prisms:</strong> <a class="btn btn-secondary" data-toggle="collapse" href="#prisms" role="button" aria-expanded="false" aria-controls="prisms">Spoiler</a></p>
+    <div class="collapse" id="prisms">
+      <div class="card card-body">
+        {% if character.prisms %}
+          <ul>
+            {% for prism in character.prisms %}<li>{{ prism }}</li>{% endfor %}
+          </ul>
+        {% else %}
+          <p><em>No prisms owned.</em></p>
+        {% endif %}
+      </div>
+    </div>
+  {% else %}
+    <p>Invalid character.</p>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}{{ roleplay.name }} - Commands{% endblock %}
+
+{% block content %}
+  {% if roleplay %}
+    <h2>Commands</h2>
+    <p>The following commands are available for this roleplay. Parameters surrounded by <kbd>[]</kbd> are optional. Parameters with <kbd>...</kbd> can be repeated.</p>
+    <ul>
+      {% for command in roleplay.commands %}
+        <li><kbd>{{ command.PREFIX }}{{ command.name }}{% for param in command.params %} {% if param.optional %}[{% endif %}{{ param.name }}{% if param.optional %}]{% endif %}{% if param.collect %}...{% endif %}{% endfor %}</kbd>: {{ command.help }}</li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>Select a roleplay from the top-right to view.</p>
+  {% endif %}
+{% endblock %}

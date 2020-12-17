@@ -1,9 +1,7 @@
-from yaml import YAMLObject
+from rpbot.data.base import YAMLObjectWithDefaults
 
 
-class Role(YAMLObject):
-    yaml_tag = '!role'
-
+class Role(YAMLObjectWithDefaults):
     def __init__(self, label: str, color: str):
         self.label = label
         self.color = color

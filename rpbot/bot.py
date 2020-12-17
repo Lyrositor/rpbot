@@ -13,8 +13,10 @@ from discord import Client, CategoryChannel, TextChannel, PermissionOverwrite, \
     Guild, Message, NotFound, Color, Forbidden, Intents
 
 from rpbot.base_plugin import BasePlugin
+from rpbot.data.connection import Connection
 from rpbot.data.role import Role
 from rpbot.data.roleplay import Roleplay
+from rpbot.data.room import Room
 from rpbot.plugin import Plugin, PluginCommand
 from rpbot.state import State
 from rpbot.utils import reply
@@ -284,6 +286,10 @@ class RoleplayBot(Client):
     @staticmethod
     def load_roleplays(roleplays_dir: str) -> Dict[str, Roleplay]:
         roleplays = {}
+        yaml.add_constructor('!connection', Connection.load)
+        yaml.add_constructor('!role', Role.load)
+        yaml.add_constructor('!roleplay', Roleplay.load)
+        yaml.add_constructor('!room', Room.load)
         for roleplay_file in glob(os.path.join(roleplays_dir, '*.yaml')):
             with open(roleplay_file) as f:
                 roleplay = yaml.load(f, Loader=yaml.Loader)

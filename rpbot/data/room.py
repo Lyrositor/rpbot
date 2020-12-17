@@ -1,14 +1,7 @@
-from typing import List
-
-from yaml import YAMLObject
-
-from rpbot.data.object import Object
+from rpbot.data.base import YAMLObjectWithDefaults
 
 
-class Room(YAMLObject):
-    yaml_tag = '!room'
-
-    def __init__(self, section: str, description: str, objects: List[Object]):
+class Room(YAMLObjectWithDefaults):
+    def __init__(self, section: str, description: str):
         self.section = section
         self.description = description
-        self.objects = objects

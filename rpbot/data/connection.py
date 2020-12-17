@@ -1,16 +1,14 @@
-from yaml import YAMLObject
+from rpbot.data.base import YAMLObjectWithDefaults
 
 
-class Connection(YAMLObject):
-    yaml_tag = '!connection'
-
+class Connection(YAMLObjectWithDefaults):
     def __init__(
             self,
             room1: str,
             room2: str,
-            timer: int,
-            hidden: bool,
-            locked: bool
+            timer: int = 0,
+            hidden: bool = False,
+            locked: bool = False,
     ):
         self.room1 = room1
         self.room2 = room2

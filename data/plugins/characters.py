@@ -407,6 +407,10 @@ class CharactersPlugin(Plugin):
         character['inventory'].remove(item_clean)
         await self._save_config(message)
         await message.channel.send(f'Dropped "{item_clean}".')
+        await self.bot.get_chronicle(message.guild).log_from_channel(
+            message.channel,
+            f'**{character["name"]}** dropped **{item_clean}**',
+        )
 
     @delete_message
     async def pickup(self, message: Message, item: str) -> None:
@@ -415,6 +419,10 @@ class CharactersPlugin(Plugin):
         character['inventory'].append(item_clean)
         await self._save_config(message)
         await message.channel.send(f'Picked up "{item_clean}".')
+        await self.bot.get_chronicle(message.guild).log_from_channel(
+            message.channel,
+            f'**{character["name"]}** picked up **{item_clean}**',
+        )
 
     @delete_message
     async def inventory(self, message: Message) -> None:
@@ -449,6 +457,9 @@ class CharactersPlugin(Plugin):
         msg += '\n' + ' '.join(BasePlugin.NUMBERS_EMOJI[r] for r in result.dice)
 
         await message.channel.send(msg)
+        await self.bot.get_chronicle(message.guild).log_roll(
+            message.author, message.channel, result.total
+        )
 
     # noinspection PyUnusedLocal
     @delete_message

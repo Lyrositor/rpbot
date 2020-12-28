@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Optional, Iterable, Any, Dict, Tuple
 from discord import Message, Role, Member, TextChannel, Guild
 
 from rpbot.data.roleplay import Roleplay
-from rpbot.plugin import Plugin, PluginCommandParam
+from rpbot.plugin import Plugin, PluginCommandParam, delete_message
 from rpbot.state import State
 
 if TYPE_CHECKING:
@@ -29,6 +29,7 @@ UNLOCK_CMD = 'unlock'
 REVEAL_CMD = 'reveal'
 KEY_CMD = 'key'
 RELOAD_CMD = 'reload'
+ANNOUNCE_CMD = 'a'
 
 
 class BasePlugin(Plugin):
@@ -172,6 +173,14 @@ class BasePlugin(Plugin):
             help_msg='Reloads the roleplay from its YAML definition.',
             requires_admin=True,
             params=[]
+        )
+        self.register_command(
+            name=ANNOUNCE_CMD,
+            handler=self.announce,
+            help_msg='Announces a message to players. This is how GMs should '
+                     'usually write narration.',
+            requires_admin=True,
+            params=[PluginCommandParam('text')]
         )
 
         if roleplay:
@@ -372,6 +381,9 @@ class BasePlugin(Plugin):
             f'{message.author.mention} rolled **{total}**: '
             + ' '.join(results)
         )
+        await self.bot.get_chronicle(message.guild).log_roll(
+            message.author, message.channel, total
+        )
 
     async def roll_dice_fate(self, message: Message, num_dice: int):
         await message.delete()
@@ -396,6 +408,9 @@ class BasePlugin(Plugin):
         await message.channel.send(
             f'{message.author.mention} rolled **{total}**: '
             + ' '.join(results)
+        )
+        await self.bot.get_chronicle(message.guild).log_roll(
+            message.author, message.channel, total
         )
 
     async def lock(self, message: Message, location: str):
@@ -425,11 +440,11 @@ class BasePlugin(Plugin):
             config['connections'][connection.name]['h'] = False
             State.save_config(message.guild.id, config)
             await self.bot.save_guild_config(message.guild, config)
-            await channel.send(
-                f'A connection between {channel.name} and {location} has been '
-                'revealed.'
-            )
+            text = f'A connection between {channel.name} and {location} has ' \
+                   f'been revealed.'
+            await channel.send(text)
             await message.delete()
+            await self.bot.get_chronicle(message.guild).log_announcement(text)
 
     # noinspection PyUnusedLocal
     async def toggle_key(
@@ -467,6 +482,14 @@ class BasePlugin(Plugin):
             message.guild, State.get_config(message.guild.id)
         )
         await message.channel.send('Roleplay definition and plugins reloaded.')
+
+    @delete_message
+    async def announce(self, message: Message, text: str) -> None:
+        formatted_message = ''
+        for line in text.split('\n'):
+            formatted_message += f'> {line}\n'
+        await message.channel.send(formatted_message.strip())
+        await self.bot.get_chronicle(message.guild).log_announcement(text)
 
     async def _lock_or_unlock(
             self, message: Message, location: str, lock: bool = True
@@ -508,6 +531,12 @@ class BasePlugin(Plugin):
             f'{"Locked" if lock else "Unlocked"} access to {location}.'
         )
         await message.delete()
+        name = 'the GM' \
+            if State.is_admin(message.author) else message.author.display_name
+        await self.bot.get_chronicle(message.guild).log_announcement(
+            f'Access from **{message.channel.name}** to **{location}** '
+            f'{"" if lock else "un"}locked by **{name}**'
+        )
 
     def _list_destinations(
             self, connections: Dict[str, Dict[str, Any]], room: str
@@ -561,6 +590,9 @@ class BasePlugin(Plugin):
         await new_channel.set_permissions(
             player,
             read_messages=True
+        )
+        await self.bot.get_chronicle(player.guild).log_movement(
+            player.display_name, dest_room, from_channel
         )
         return new_channel
 

@@ -69,11 +69,22 @@ class RadioPlugin(Plugin):
         for channel in category.text_channels:
             if channel.name == RADIO_CHANNEL:
                 await channel.send(text)
+                break
+        else:
+            await message.channel.send(
+                f'No radio is available in this location.'
+            )
+            return
 
         await message.channel.send(
             f'{message.author.mention} sends out a radio message.'
         )
         await message.delete()
+        await self.bot.get_chronicle(message.guild).log_player_message(
+            message.author,
+            channel,
+            text
+        )
 
 
 PLUGIN = RadioPlugin

@@ -13,6 +13,7 @@ from discord import Client, CategoryChannel, TextChannel, PermissionOverwrite, \
     Guild, Message, NotFound, Color, Forbidden, Intents
 
 from rpbot.base_plugin import BasePlugin
+from rpbot.chronicle import Chronicle
 from rpbot.data.connection import Connection
 from rpbot.data.role import Role
 from rpbot.data.roleplay import Roleplay
@@ -24,6 +25,7 @@ from rpbot.utils import reply
 
 class RoleplayBot(Client):
     BOT_CONFIG_CHANNEL = 'rpbot-config'
+    CHRONICLE_CHANNEL = 'chronicle'
 
     def __init__(
             self,
@@ -41,6 +43,7 @@ class RoleplayBot(Client):
         self.roleplays_dir = roleplays_dir
         self.plugins = {}
         self.roleplays = {}
+        self.chronicles = {}
         self.reload()
 
     def reload(self) -> None:
@@ -92,6 +95,10 @@ class RoleplayBot(Client):
         if message.guild is None:
             return
 
+        # Ignore all messages from this bot
+        if message.author == self.user:
+            return
+
         plugins = self.get_all_plugins(message.guild)
 
         # Do a special case for !help, since we need an overview of all plugins
@@ -110,7 +117,20 @@ class RoleplayBot(Client):
             return
 
         for plugin in plugins:
-            await plugin.process_message(message)
+            if await plugin.process_message(message):
+                break
+        else:
+            roleplay = self.get_roleplay_for_guild(message.guild.id)
+            if roleplay and message.channel.name in roleplay.rooms:
+                await self.get_chronicle(message.guild).log_player_message(
+                    message.author, message.channel, message.clean_content
+                )
+
+    def get_chronicle(self, guild: Guild) -> Chronicle:
+        if guild.id not in self.chronicles:
+            # For now, chronicle channel names are hard-coded
+            self.chronicles[guild.id] = Chronicle(guild, self.CHRONICLE_CHANNEL)
+        return self.chronicles[guild.id]
 
     def get_all_plugins(self, guild: Guild) -> List[Plugin]:
         plugins = [

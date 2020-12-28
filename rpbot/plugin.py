@@ -29,7 +29,8 @@ class Plugin(ABC):
             requires_player: bool = False,
             requires_admin: bool = False,
             requires_room: bool = False,
-            params: Optional[List['PluginCommandParam']] = None
+            params: Optional[List['PluginCommandParam']] = None,
+            hidden: bool = False
     ):
         self.commands[name] = PluginCommand(
             name=name,
@@ -38,7 +39,8 @@ class Plugin(ABC):
             requires_player=requires_player,
             requires_admin=requires_admin,
             requires_room=requires_room,
-            params=params
+            params=params,
+            hidden=hidden,
         )
 
     async def process_message(self, message: Message) -> bool:
@@ -99,7 +101,7 @@ class Plugin(ABC):
         return '\n'.join(
             str(self.commands[c]) for c in sorted(self.commands.keys())
             if (not self.commands[c].requires_admin or is_admin)
-            and self.commands[c].enabled
+            and self.commands[c].enabled and not self.commands[c].hidden
         )
 
 
@@ -115,7 +117,8 @@ class PluginCommand:
             requires_admin: bool = False,
             requires_room: bool = False,
             params: Optional[List['PluginCommandParam']] = None,
-            enabled: bool = False
+            enabled: bool = False,
+            hidden: bool = False,
     ):
         self.name = name
         self.handler = handler
@@ -125,6 +128,7 @@ class PluginCommand:
         self.requires_room = requires_room
         self.params = params if params else []
         self.enabled = enabled
+        self.hidden = hidden
 
     async def run(self, message: Message, params: Optional[str]):
         is_admin = State.is_admin(message.author)

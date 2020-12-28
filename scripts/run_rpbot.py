@@ -25,6 +25,11 @@ TEMPLATES_PATH = 'templates'
 routes = RouteTableDef()
 
 
+# Load config from file
+with open(DEFAULT_CONFIG_FILE_NAME) as f:
+    bot_config = toml.load(f)
+
+
 async def global_variables(request: Request):
     bot: RoleplayBot = request.app['bot']
     roleplays = []
@@ -58,10 +63,11 @@ async def global_variables(request: Request):
                 'commands': [
                     command for plugin in bot.get_all_plugins(guild)
                     for command in sorted(plugin.commands.values(), key=lambda c: c.name)
-                    if command.enabled and not command.requires_admin
+                    if command.enabled and not command.requires_admin and not command.hidden
                 ]
             }
     return {
+        'base_url': bot_config['rpbot']['base_url'],
         'roleplay': roleplay,
         'roleplays': sorted(roleplays, key=itemgetter('name')),
     }
@@ -104,9 +110,9 @@ async def character(request: Request):
     }
 
 
-async def run_bot(bot: RoleplayBot, config: Dict[str, Any]):
+async def run_bot(bot: RoleplayBot):
     try:
-        await bot.start(config['rpbot']['token'])
+        await bot.start(bot_config['rpbot']['token'])
     finally:
         if not bot.is_closed():
             await bot.close()
@@ -140,19 +146,15 @@ def run_bot_and_website():
     except NotImplementedError:
         pass
 
-    # Load config from file
-    with open(DEFAULT_CONFIG_FILE_NAME) as f:
-        config = toml.load(f)
-
     # Set up the bot
     bot = RoleplayBot(
-        config['rpbot']['plugins_dir'],
-        config['rpbot']['roleplays_dir'],
-        config['rpbot']['admins']
+        bot_config['rpbot']['plugins_dir'],
+        bot_config['rpbot']['roleplays_dir'],
+        bot_config['rpbot']['admins']
     )
 
     logging.info('Starting up roleplay bot')
-    asyncio.ensure_future(run_bot(bot, config), loop=loop)
+    asyncio.ensure_future(run_bot(bot), loop=loop)
     asyncio.ensure_future(run_website(bot), loop=loop)
     try:
         loop.run_forever()

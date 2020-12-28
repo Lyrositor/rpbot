@@ -16,7 +16,7 @@
                 {% if character.avatar %}<img src="{{ character.avatar }}" class="card-img-top" alt="Avatar" />{% endif %}
                 <div class="card-body">
                   <h4 class="card-title">{{ character.name }}</h4>
-                  <a href="/{{ roleplay.id }}/character/{{ character.user_id }}/{{ character.id }}" class="btn btn-primary">View Character Sheet</a>
+                  <a href="{{ base_url }}/{{ roleplay.id }}/character/{{ character.user_id }}/{{ character.id }}" class="btn btn-primary">View Character Sheet</a>
                 </div>
               </div>
             </div>

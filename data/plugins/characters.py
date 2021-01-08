@@ -172,7 +172,7 @@ class CharactersPlugin(Plugin):
             requires_admin=True,
             params=[
                 PluginCommandParam('name'),
-                PluginCommandParam('prisms', collect=True)
+                PluginCommandParam('prisms', optional=True, collect=True)
             ]
         )
         self.register_command(
@@ -219,7 +219,7 @@ class CharactersPlugin(Plugin):
                 'specified, lists all available prisms.'
             ),
             requires_player=True,
-            params=[PluginCommandParam('prisms', collect=True)]
+            params=[PluginCommandParam('prisms', optional=True, collect=True)]
         )
         self.register_command(
             name=PRISM_ADD_CMD,
@@ -713,6 +713,12 @@ class CharactersPlugin(Plugin):
             character: Dict[str, Any],
             prisms: Iterable[str]
     ) -> None:
+        if not prisms:
+            msg = f'**{character["name"]}** owns the following prisms:'
+            for prism in self._get_all_prisms(character):
+                msg += f'\n- {prism}'
+            await channel.send(msg)
+            return
         prism_summaries = []
         roll = Roll()
         for prism_query in prisms:

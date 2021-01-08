@@ -87,6 +87,9 @@ class RoleplayBot(Client):
                         sys.exit(1)
                     finally:
                         break
+            await self.get_chronicle(guild).log_announcement(
+                "[Bot restarted, some messages may have been lost]"
+            )
 
         logging.info('Setup complete')
 

@@ -1,17 +1,17 @@
 import random
 import re
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, Optional, List
+from typing import TYPE_CHECKING, Any, Dict, Optional, List, Iterable
 
 import requests
-from discord import Message, Member
+from discord import Message, Member, Guild, TextChannel
 
 from rpbot.base_plugin import BasePlugin
 from rpbot.data.roleplay import Roleplay
 from rpbot.plugin import Plugin, PluginCommandParam, delete_message, \
     CommandException
 from rpbot.state import State
-from rpbot.utils import hash_password
+from rpbot.utils import hash_password, reply
 
 if TYPE_CHECKING:
     from rpbot.bot import RoleplayBot
@@ -21,6 +21,8 @@ CHARACTERS_DELETE_CMD = 'chardelete'
 CHARACTERS_EDIT_CMD = 'charedit'
 CHARACTERS_PASSWORD_CMD = 'charpassword'
 CHARACTERS_SELECT_CMD = 'charselect'
+NPC_MOVE_CMD = 'npcmove'
+NPC_PRISM_CMD = 'npcprism'
 ACTION_POINTS_CMD = 'ap'
 DROP_CMD = 'drop'
 INVENTORY_CMD = 'inventory'
@@ -29,6 +31,7 @@ PRISM_CMD = 'prism'
 PRISM_ADD_CMD = 'prismadd'
 PRISM_RM_CMD = 'prismremove'
 REFRESH_CMD = 'refresh'
+STATUS_CMD = 'status'
 
 NAMES_REGEX = re.compile(r'[a-z0-9 .]+')
 PASSWORD_REGEX = re.compile(r'[a-zA-Z0-9]+')
@@ -75,10 +78,15 @@ STANDARD_PRISMS = {
 
 class CharactersPlugin(Plugin):
     def __init__(
-            self, bot: 'RoleplayBot', roleplay: Roleplay, prisms: Dict[str, Any]
+            self,
+            bot: 'RoleplayBot',
+            roleplay: Roleplay,
+            prisms: Dict[str, Any],
+            npcs: Dict[str, Any]
     ):
         super().__init__(bot, roleplay)
         self.prisms = {}
+        self.npcs = {}
         for name, data in {**STANDARD_PRISMS, **prisms}.items():
             t = data['type']
             d = data.get('description')
@@ -97,6 +105,11 @@ class CharactersPlugin(Plugin):
             else:
                 raise ValueError(f'Unknown prism type "{t}"')
             self.prisms[name] = prism
+        for name, data in npcs.items():
+            for prism in data['prisms']:
+                if prism not in self.prisms:
+                    raise ValueError(f'Unknown NPC prism "{prism}"')
+            self.npcs[self._get_character_id(name)] = {'name': name, **data}
 
         self.register_command(
             name=CHARACTERS_CREATE_CMD,
@@ -117,8 +130,8 @@ class CharactersPlugin(Plugin):
             handler=self.character_edit,
             help_msg=(
                 'Edits an attribute of the active character. Available '
-                'attributes: `age`, `status`, `avatar`, `force`, `presence`, `guts`, '
-                '`wits`, `sensation`, `reflection`.'
+                'attributes: `age`, `status`, `avatar`, `force`, `presence`, '
+                '`guts`, `wits`, `sensation`, `reflection`.'
             ),
             requires_player=True,
             params=[
@@ -143,6 +156,26 @@ class CharactersPlugin(Plugin):
             params=[PluginCommandParam('name', True)]
         )
         self.register_command(
+            name=NPC_MOVE_CMD,
+            handler=self.npc_move,
+            help_msg='Moves an NPC to the specified room.',
+            requires_admin=True,
+            params=[PluginCommandParam('name'), PluginCommandParam('room')]
+        )
+        self.register_command(
+            name=NPC_PRISM_CMD,
+            handler=self.npc_prism,
+            help_msg=(
+                'Rolls prisms for an NPC. Specify no prisms to list all of the '
+                'NPC\'s prisms instead.'
+            ),
+            requires_admin=True,
+            params=[
+                PluginCommandParam('name'),
+                PluginCommandParam('prisms', collect=True)
+            ]
+        )
+        self.register_command(
             name=ACTION_POINTS_CMD,
             handler=self.action_points,
             help_msg=(
@@ -159,7 +192,6 @@ class CharactersPlugin(Plugin):
             handler=self.drop,
             help_msg='Drops an item your character owns.',
             requires_player=True,
-            requires_room=True,
             params=[PluginCommandParam('item')]
         )
         self.register_command(
@@ -228,6 +260,15 @@ class CharactersPlugin(Plugin):
             requires_admin=True,
             params=[PluginCommandParam('points', converter=int)]
         )
+        self.register_command(
+            name=STATUS_CMD,
+            handler=self.status,
+            requires_player=True,
+            requires_room=True,
+            help_msg=(
+                'Displays the current status of all characters in the vicinity.'
+            ),
+        )
 
         if roleplay:
             for command in self.commands.values():
@@ -235,7 +276,7 @@ class CharactersPlugin(Plugin):
 
     @delete_message
     async def character_create(self, message: Message, name: str) -> None:
-        characters = await self._get_player_characters(message)
+        characters = await self._get_player_characters(message.author)
 
         name_id = self._get_character_id(name)
         if not NAMES_REGEX.match(name_id):
@@ -274,12 +315,12 @@ class CharactersPlugin(Plugin):
             ]
         }
         characters['active'] = name_id
-        await self._save_config(message)
+        await self._save_config(message.guild)
         await message.channel.send(f'Character "{name}" has been created.')
 
     @delete_message
     async def character_delete(self, message: Message, name: str) -> None:
-        characters = await self._get_player_characters(message)
+        characters = await self._get_player_characters(message.author)
         name_id = self._get_character_id(name)
         if name_id not in characters['characters']:
             raise CommandException(f'Character "{name}" does not exist.')
@@ -287,14 +328,14 @@ class CharactersPlugin(Plugin):
         del characters['characters'][name_id]
         if characters['active'] == name_id:
             characters['active'] = None
-        await self._save_config(message)
+        await self._save_config(message.guild)
         await message.channel.send(f'Character "{name}" has been deleted.')
 
     @delete_message
     async def character_edit(
             self, message: Message, attribute: str, value: str
     ):
-        character = await self._get_active_character(message)
+        character = await self._get_active_character(message.author)
         attr = attribute.lower()
         if attr == 'age':
             try:
@@ -337,7 +378,7 @@ class CharactersPlugin(Plugin):
             character['abilities'][attr] = val
         else:
             raise CommandException(f'Invalid attribute name "{attribute}"')
-        await self._save_config(message)
+        await self._save_config(message.guild)
         await message.channel.send(f'Character edited.')
 
     @delete_message
@@ -348,16 +389,16 @@ class CharactersPlugin(Plugin):
                 'Invalid password: can only contain letters and numbers.'
             )
 
-        characters = await self._get_player_characters(message)
+        characters = await self._get_player_characters(message.author)
         characters['password'] = list(hash_password(password))
-        await self._save_config(message)
+        await self._save_config(message.guild)
         await message.channel.send('Password updated.')
 
     @delete_message
     async def character_select(
             self, message: Message, name: Optional[str] = None
     ) -> None:
-        characters = await self._get_player_characters(message)
+        characters = await self._get_player_characters(message.author)
 
         if name is None:
             reply = 'Available characters:'
@@ -375,18 +416,50 @@ class CharactersPlugin(Plugin):
             if name_id not in characters['characters']:
                 raise CommandException(f'Unknown character "{name}"')
             characters['active'] = name_id
-            await self._save_config(message)
-            character_name = (await self._get_active_character(message))['name']
+            await self._save_config(message.guild)
+            character_name = (await self._get_active_character(
+                message.author
+            ))['name']
             await message.channel.send(
                 f'"{character_name}" is now the active character.'
             )
 
     @delete_message
+    async def npc_move(self, message: Message, npc_name: str, new_room: str):
+        new_channel = self.find_channel_by_name(
+            message.guild, new_room, self.roleplay.rooms[new_room].section
+        )
+        if not new_channel:
+            raise CommandException(f'Invalid room "{new_room}"')
+        assert isinstance(new_channel, TextChannel)
+
+        npc = await self._get_npc_by_name(npc_name)
+        in_room = message.channel.name in self.roleplay.rooms
+        await self._move_npc_to_room(message.guild, npc['name'], new_room)
+        if in_room:
+            await message.channel.send(f'**{npc["name"]}** moves to {new_room}')
+            await new_channel.send(
+                f'**{npc["name"]}** moves in from {message.channel.name}'
+            )
+        else:
+            await new_channel.send(f'**{npc["name"]}** appears')
+        await self.bot.get_chronicle(message.guild).log_movement(
+            npc['name'], new_room, message.channel if in_room else None
+        )
+
+    @delete_message
+    async def npc_prism(
+            self, message: Message, npc_name: str, prisms: List[str]
+    ) -> None:
+        npc = await self._get_npc_by_name(npc_name)
+        await self._roll_prisms(message.channel, npc, prisms)
+
+    @delete_message
     async def action_points(self, message: Message, points: int) -> None:
-        character = await self._get_active_character(message)
+        character = await self._get_active_character(message.author)
         if points:
             character['actions'] -= points
-            await self._save_config(message)
+            await self._save_config(message.guild)
             await message.channel.send(
                 f'{character["name"]} now has {character["actions"]} action '
                 f'points.'
@@ -398,14 +471,14 @@ class CharactersPlugin(Plugin):
 
     @delete_message
     async def drop(self, message: Message, item: str) -> None:
-        character = await self._get_active_character(message)
+        character = await self._get_active_character(message.author)
         item_clean = item.strip()
         if item_clean not in character['inventory']:
             raise CommandException(
                 f'{character["name"]} does not own "{item_clean}".'
             )
         character['inventory'].remove(item_clean)
-        await self._save_config(message)
+        await self._save_config(message.guild)
         await message.channel.send(f'Dropped "{item_clean}".')
         await self.bot.get_chronicle(message.guild).log_from_channel(
             message.channel,
@@ -414,10 +487,10 @@ class CharactersPlugin(Plugin):
 
     @delete_message
     async def pickup(self, message: Message, item: str) -> None:
-        character = await self._get_active_character(message)
+        character = await self._get_active_character(message.author)
         item_clean = item.strip()
         character['inventory'].append(item_clean)
-        await self._save_config(message)
+        await self._save_config(message.guild)
         await message.channel.send(f'Picked up "{item_clean}".')
         await self.bot.get_chronicle(message.guild).log_from_channel(
             message.channel,
@@ -426,7 +499,7 @@ class CharactersPlugin(Plugin):
 
     @delete_message
     async def inventory(self, message: Message) -> None:
-        character = await self._get_active_character(message)
+        character = await self._get_active_character(message.author)
         items = 'Inventory:'
         if character['inventory']:
             for item in character['inventory']:
@@ -437,29 +510,8 @@ class CharactersPlugin(Plugin):
 
     @delete_message
     async def prism(self, message: Message, prisms: List[str]) -> None:
-        character = await self._get_active_character(message)
-
-        prism_summaries = []
-        roll = Roll()
-        for prism_query in prisms:
-            prism = self._find_prism(character, prism_query.strip())
-            prism.apply(character, roll)
-            prism_summaries.append(f'**{prism.name}** [{prism.summary}]')
-        result = roll.resolve()
-
-        msg = (
-            f'{message.author.mention} rolled: **{result.total}** '
-            f'({result.dice_total} + {result.modifier})'
-        )
-        if result.rerolls:
-            msg += f' (**{result.rerolls}** rerolls left)'
-        msg += '\n*' + ' > '.join(prism_summaries) + '*'
-        msg += '\n' + ' '.join(BasePlugin.NUMBERS_EMOJI[r] for r in result.dice)
-
-        await message.channel.send(msg)
-        await self.bot.get_chronicle(message.guild).log_roll(
-            message.author, message.channel, result.total
-        )
+        character = await self._get_active_character(message.author)
+        await self._roll_prisms(message.channel, character, prisms)
 
     # noinspection PyUnusedLocal
     @delete_message
@@ -477,7 +529,7 @@ class CharactersPlugin(Plugin):
                 f'{character["name"]} already owns "{prism_clean}".'
             )
         character['prisms'].append(prism_clean)
-        await self._save_config(message)
+        await self._save_config(message.guild)
         await message.channel.send(
             f'Gave "{prism_clean}" to {character["name"]}.'
         )
@@ -498,13 +550,13 @@ class CharactersPlugin(Plugin):
                 f'{character["name"]} does not own "{prism_clean}".'
             )
         character['prisms'].remove(prism_clean)
-        await self._save_config(message)
+        await self._save_config(message.guild)
         await message.channel.send(
             f'Removed "{prism_clean}" from {character["name"]}.'
         )
 
     @delete_message
-    async def refresh(self, message: Message, points: int):
+    async def refresh(self, message: Message, points: int) -> None:
         characters_by_player = await self._get_characters_by_player(message)
         if characters_by_player is None:
             return None
@@ -513,16 +565,43 @@ class CharactersPlugin(Plugin):
             for character in entry['characters'].values():
                 character['actions'] = points
 
-        await self._save_config(message)
+        await self._save_config(message.guild)
         await message.channel.send(f'Actions points refreshed to {points}.')
 
-    async def _save_config(self, message: Message) -> None:
+    @delete_message
+    async def status(self, message: Message) -> None:
+        statuses = []
+        for member in message.channel.members:
+            if State.is_player(member):
+                try:
+                    character = await self._get_active_character(member)
+                except CommandException:
+                    continue
+                if character['status']:
+                    status = f'**{character["name"]}:** {character["status"]}'
+                else:
+                    status = f'**{character["name"]}**'
+                statuses.append(status)
+        for npc in self._get_npcs_in_room(
+                message.guild, message.channel.name
+        ):
+            statuses.append(f'**{npc["name"]}:** {npc["description"]}')
+
+        if statuses:
+            text = 'The following people are here:'
+            for status in sorted(statuses):
+                text += f'\n{status}'
+            await reply(message, text)
+        else:
+            await reply(message, 'Nobody is here.')
+
+    async def _save_config(self, guild: Guild) -> None:
         await self.bot.save_guild_config(
-            message.guild, State.get_config(message.guild.id)
+            guild, State.get_config(guild.id)
         )
 
-    async def _get_active_character(self, message: Message) -> Dict[str, Any]:
-        characters = await self._get_player_characters(message)
+    async def _get_active_character(self, member: Member) -> Dict[str, Any]:
+        characters = await self._get_player_characters(member)
         active = characters['characters'].get(characters['active'])
         if not active:
             raise CommandException(
@@ -531,16 +610,11 @@ class CharactersPlugin(Plugin):
             )
         return active
 
-    @staticmethod
-    async def _get_player_characters(message: Message) -> Dict[str, Any]:
-        config = State.get_config(message.guild.id)
-        if not config or not config.get('rp'):
-            raise CommandException(
-                'No active roleplay, characters not available.'
-            )
+    async def _get_player_characters(self, member: Member) -> Dict[str, Any]:
+        config = self._get_config(member.guild)
         if 'characters' not in config:
             config['characters'] = {}
-        user_id = str(message.author.id)
+        user_id = str(member.id)
         if user_id not in config['characters']:
             config['characters'][user_id] = {
                 'password': None,
@@ -566,19 +640,12 @@ class CharactersPlugin(Plugin):
 
         raise CommandException(f'Failed to locate character.')
 
-    @staticmethod
     async def _get_characters_by_player(
-            message: Message
+            self, message: Message
     ) -> Dict[str, Dict[str, Any]]:
-        config = State.get_config(message.guild.id)
-        if not config or not config.get('rp'):
-            raise CommandException(
-                'No active roleplay, characters not available.'
-            )
-
+        config = self._get_config(message.guild)
         if 'characters' not in config:
             raise CommandException('Characters are not set up.')
-
         return config['characters']
 
     @staticmethod
@@ -586,7 +653,7 @@ class CharactersPlugin(Plugin):
         return name.lower().strip()
 
     def _find_prism(self, character: Dict[str, Any], query: str) -> 'Prism':
-        for prism in character['prisms']:
+        for prism in self._get_all_prisms(character):
             if prism.lower().startswith(query.lower()):
                 prism_name = prism
                 break
@@ -596,6 +663,86 @@ class CharactersPlugin(Plugin):
         if not prism:
             raise CommandException(f'Unknown prism "{prism_name}".')
         return prism
+
+    @staticmethod
+    def _get_all_prisms(character: Dict[str, Any]) -> List[str]:
+        all_prisms = [*character['prisms']]
+        for prism_name in STANDARD_PRISMS:
+            if prism_name not in all_prisms:
+                all_prisms.append(prism_name)
+        return all_prisms
+
+    async def _get_npc_by_name(self, npc_name: str) -> Dict[str, Any]:
+        query = self._get_character_id(npc_name)
+        for npc_id, value in self.npcs.items():
+            if npc_id.startswith(query):
+                return value
+        raise CommandException(f'Failed to locate NPC.')
+
+    def _get_npcs_in_room(
+            self, guild: Guild, room: str
+    ) -> List[Dict[str, Any]]:
+        npcs_config = self._get_npcs_config(guild)
+        return [
+            self.npcs[npc_id]
+            for npc_id in npcs_config['rooms'].get(room, [])
+        ]
+
+    async def _move_npc_to_room(
+            self, guild: Guild, npc_name: str, new_room: str
+    ) -> None:
+        npcs_config = self._get_npcs_config(guild)
+        npc_id = self._get_character_id(npc_name)
+        for room, npcs in npcs_config['rooms'].items():
+            if npc_id in npcs:
+                npcs.remove(npc_id)
+        if new_room not in npcs_config['rooms']:
+            npcs_config['rooms'][new_room] = []
+        npcs_config['rooms'][new_room].append(npc_id)
+        await self._save_config(guild)
+
+    def _get_npcs_config(self, guild: Guild) -> Dict[str, Any]:
+        config = self._get_config(guild)
+        if 'npcs' not in config:
+            config['npcs'] = {'rooms': {}}
+        return config['npcs']
+
+    async def _roll_prisms(
+            self,
+            channel: TextChannel,
+            character: Dict[str, Any],
+            prisms: Iterable[str]
+    ) -> None:
+        prism_summaries = []
+        roll = Roll()
+        for prism_query in prisms:
+            prism = self._find_prism(character, prism_query.strip())
+            prism.apply(character, roll)
+            prism_summaries.append(f'**{prism.name}** [{prism.summary}]')
+        result = roll.resolve()
+
+        msg = (
+            f'{character["name"]} rolled: **{result.total}** '
+            f'({result.dice_total} + {result.modifier})'
+        )
+        if result.rerolls:
+            msg += f' (**{result.rerolls}** rerolls left)'
+        msg += '\n*' + ' > '.join(prism_summaries) + '*'
+        msg += '\n' + ' '.join(BasePlugin.NUMBERS_EMOJI[r] for r in result.dice)
+
+        await channel.send(msg)
+        await self.bot.get_chronicle(channel.guild).log_roll(
+            character["name"], channel, result.total
+        )
+
+    @staticmethod
+    def _get_config(guild: Guild) -> Dict[str, Any]:
+        config = State.get_config(guild.id)
+        if not config or not config.get('rp'):
+            raise CommandException(
+                'No active roleplay, characters not available.'
+            )
+        return config
 
 
 class RollResult:

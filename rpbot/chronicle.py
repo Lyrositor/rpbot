@@ -40,9 +40,8 @@ class Chronicle:
         await self.log(formatted_message.strip())
 
     async def log_roll(
-            self, member: Member, channel: TextChannel, roll: int
+            self, name: str, channel: TextChannel, roll: int
     ) -> None:
-        name = 'The GM' if State.is_admin(member) else member.display_name
         await self.log(f'`[{channel.name}]` **{name}** rolls **{roll}**')
 
     async def log_from_channel(self, channel: TextChannel, message: str) -> None:

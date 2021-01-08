@@ -382,7 +382,7 @@ class BasePlugin(Plugin):
             + ' '.join(results)
         )
         await self.bot.get_chronicle(message.guild).log_roll(
-            message.author, message.channel, total
+            message.author.mention, message.channel, total
         )
 
     async def roll_dice_fate(self, message: Message, num_dice: int):
@@ -410,7 +410,7 @@ class BasePlugin(Plugin):
             + ' '.join(results)
         )
         await self.bot.get_chronicle(message.guild).log_roll(
-            message.author, message.channel, total
+            message.author.mention, message.channel, total
         )
 
     async def lock(self, message: Message, location: str):

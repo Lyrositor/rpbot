@@ -88,6 +88,7 @@ class RoleplayBot(Client):
                     finally:
                         break
             await self.get_chronicle(guild).log_announcement(
+                None,
                 "[Bot restarted, some messages may have been lost]"
             )
 

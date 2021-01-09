@@ -30,6 +30,9 @@ REVEAL_CMD = 'reveal'
 KEY_CMD = 'key'
 RELOAD_CMD = 'reload'
 ANNOUNCE_CMD = 'a'
+VIEW_ADD_CMD = 'viewadd'
+VIEW_REMOVE_CMD = 'viewremove'
+VIEW_LIST_CMD = 'viewlist'
 
 
 class BasePlugin(Plugin):
@@ -181,6 +184,28 @@ class BasePlugin(Plugin):
                      'usually write narration.',
             requires_admin=True,
             params=[PluginCommandParam('text')]
+        )
+        self.register_command(
+            name=VIEW_ADD_CMD,
+            handler=self.view_add,
+            help_msg=(
+                'Adds a remote view to another room inside this channel.'
+            ),
+            requires_admin=True,
+            params=[PluginCommandParam('room')]
+        )
+        self.register_command(
+            name=VIEW_REMOVE_CMD,
+            handler=self.view_remove,
+            help_msg='Removes a remote view on another room from this channel.',
+            requires_admin=True,
+            params=[PluginCommandParam('room')]
+        )
+        self.register_command(
+            name=VIEW_LIST_CMD,
+            handler=self.view_list,
+            help_msg='Lists all active remote views.',
+            requires_admin=True,
         )
 
         if roleplay:
@@ -444,7 +469,9 @@ class BasePlugin(Plugin):
                    f'been revealed.'
             await channel.send(text)
             await message.delete()
-            await self.bot.get_chronicle(message.guild).log_announcement(text)
+            await self.bot.get_chronicle(message.guild).log_announcement(
+                channel, text
+            )
 
     # noinspection PyUnusedLocal
     async def toggle_key(
@@ -489,7 +516,58 @@ class BasePlugin(Plugin):
         for line in text.split('\n'):
             formatted_message += f'> {line}\n'
         await message.channel.send(formatted_message.strip())
-        await self.bot.get_chronicle(message.guild).log_announcement(text)
+        await self.bot.get_chronicle(message.guild).log_announcement(
+            message.channel, text
+        )
+
+    @delete_message
+    async def view_add(self, message: Message, room: str) -> None:
+        config = State.get_config(message.guild.id)
+        if 'views' not in config:
+            config['views'] = {}
+        if room not in config['views']:
+            config['views'][room] = []
+        if message.channel.name not in config['views'][room]:
+            config['views'][room].append(message.channel.name)
+            await self.bot.save_guild_config(message.guild, config)
+            await message.channel.send(f'Remote view to {room} added.')
+        else:
+            await message.channel.send(
+                f'There is already a remote view to {room} in this channel.'
+            )
+
+    @delete_message
+    async def view_remove(self, message: Message, room: str) -> None:
+        config = State.get_config(message.guild.id)
+        if 'views' not in config:
+            config['views'] = {}
+        if room in config['views'] \
+                and message.channel.name in config['views'][room]:
+            config['views'][room].remove(message.channel.name)
+            await self.bot.save_guild_config(message.guild, config)
+            await message.channel.send(f'Remote view to {room} removed.')
+        else:
+            await message.channel.send(
+                f'No remote view to {room} set up in this channel.'
+            )
+
+    @delete_message
+    async def view_list(self, message: Message) -> None:
+        config = State.get_config(message.guild.id)
+        all_views = []
+        for user_id, views in config.get('views', {}).items():
+            user: Member = message.guild.get_member(user_id)
+            if user and views:
+                all_views.append(
+                    f'**{user.display_name}:** ' + ', '.join(views)
+                )
+        if all_views:
+            await message.channel.send(
+                'The following remote views are set up:\n'
+                + '\n'.join(all_views)
+            )
+        else:
+            await message.channel.send('No remote views are set up.')
 
     async def _lock_or_unlock(
             self, message: Message, location: str, lock: bool = True
@@ -534,6 +612,7 @@ class BasePlugin(Plugin):
         name = 'the GM' \
             if State.is_admin(message.author) else message.author.display_name
         await self.bot.get_chronicle(message.guild).log_announcement(
+            channel,
             f'Access from **{message.channel.name}** to **{location}** '
             f'{"" if lock else "un"}locked by **{name}**'
         )

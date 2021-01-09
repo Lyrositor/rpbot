@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import Optional
 
 from discord import Member, TextChannel, Guild
@@ -30,27 +31,38 @@ class Chronicle:
             self, name: str, room: str, channel: Optional[TextChannel] = None
     ) -> None:
         await self.log(
-            f'`[{channel.name if channel else "???"}]` **{name}** moves to **{room}**'
+            room,
+            f'`[{channel.name if channel else "???"}]` '
+            f'**{name}** moves to **{room}**'
         )
 
-    async def log_announcement(self, message: str) -> None:
+    async def log_announcement(
+            self, channel: Optional[TextChannel], message: str
+    ) -> None:
         formatted_message = ''
         for line in message.split('\n'):
             formatted_message += f'> {line}\n'
-        await self.log(formatted_message.strip())
+        await self.log(
+            channel.name if channel else None, formatted_message.strip()
+        )
 
     async def log_roll(
             self, name: str, channel: TextChannel, roll: int
     ) -> None:
-        await self.log(f'`[{channel.name}]` **{name}** rolls **{roll}**')
+        await self.log(
+            channel.name, f'`[{channel.name}]` **{name}** rolls **{roll}**'
+        )
 
     async def log_from_channel(self, channel: TextChannel, message: str) -> None:
-        await self.log(f"`[{channel.name}]` {message}")
+        await self.log(channel.name, f"`[{channel.name}]` {message}")
 
-    async def log(self, message: str) -> None:
+    async def log(self, source_channel: Optional[str], message: str) -> None:
+        views = State.get_config(self.guild.id).get('views', {})
+        dest_channels = {self.channel_name}
+        if source_channel in views:
+            dest_channels.update(views[source_channel])
         for channel in self.guild.text_channels:
-            if channel.name == self.channel_name:
+            if channel.name in dest_channels:
                 await channel.send(message[:MAX_MESSAGE_LENGTH])
                 if message[MAX_MESSAGE_LENGTH:]:
                     await channel.send(message[MAX_MESSAGE_LENGTH:])
-                break

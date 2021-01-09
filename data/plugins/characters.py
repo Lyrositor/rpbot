@@ -30,6 +30,7 @@ PICKUP_CMD = 'pickup'
 PRISM_CMD = 'prism'
 PRISM_ADD_CMD = 'prismadd'
 PRISM_RM_CMD = 'prismremove'
+PRISM_FAKE_CMD = 'prismfake'
 REFRESH_CMD = 'refresh'
 STATUS_CMD = 'status'
 
@@ -102,6 +103,8 @@ class CharactersPlugin(Plugin):
                 prism = MultiplierPrism(name, d, data['modifier'])
             elif t == 'output':
                 prism = OutputPrism(name, d, data['tier'])
+            elif t == 'faker':
+                prism = FakerPrism(name, d)
             else:
                 raise ValueError(f'Unknown prism type "{t}"')
             self.prisms[name] = prism
@@ -248,6 +251,16 @@ class CharactersPlugin(Plugin):
                 PluginCommandParam('prism'),
                 PluginCommandParam('character'),
                 PluginCommandParam('user', True)
+            ]
+        )
+        self.register_command(
+            name=PRISM_FAKE_CMD,
+            handler=self.prism_fake,
+            help_msg='Fakes a prism roll.',
+            hidden=True,
+            params=[
+                PluginCommandParam('result', converter=int),
+                PluginCommandParam('prisms', optional=True, collect=True)
             ]
         )
         self.register_command(
@@ -449,7 +462,7 @@ class CharactersPlugin(Plugin):
 
     @delete_message
     async def npc_prism(
-            self, message: Message, npc_name: str, prisms: List[str]
+            self, message: Message, npc_name: str, prisms: Optional[List[str]]
     ) -> None:
         npc = await self._get_npc_by_name(npc_name)
         await self._roll_prisms(message.channel, npc, prisms)
@@ -509,7 +522,7 @@ class CharactersPlugin(Plugin):
         await message.channel.send(items)
 
     @delete_message
-    async def prism(self, message: Message, prisms: List[str]) -> None:
+    async def prism(self, message: Message, prisms: Optional[List[str]]) -> None:
         character = await self._get_active_character(message.author)
         await self._roll_prisms(message.channel, character, prisms)
 
@@ -554,6 +567,21 @@ class CharactersPlugin(Plugin):
         await message.channel.send(
             f'Removed "{prism_clean}" from {character["name"]}.'
         )
+
+    @delete_message
+    async def prism_fake(
+            self, message: Message, result: int, prisms: Optional[List[str]]
+    ) -> None:
+        character = await self._get_active_character(message.author)
+        has_faker = False
+        if prisms:
+            for prism_query in prisms:
+                prism = self._find_prism(character, prism_query.strip())
+                has_faker |= isinstance(prism, FakerPrism)
+        if not has_faker:
+            await message.channel.send(f'No valid prism for roll.')
+            return
+        await self._roll_prisms(message.channel, character, prisms, result)
 
     @delete_message
     async def refresh(self, message: Message, points: int) -> None:
@@ -711,7 +739,8 @@ class CharactersPlugin(Plugin):
             self,
             channel: TextChannel,
             character: Dict[str, Any],
-            prisms: Iterable[str]
+            prisms: Optional[Iterable[str]],
+            force_result: Optional[int] = None
     ) -> None:
         if not prisms:
             msg = f'**{character["name"]}** owns the following prisms:'
@@ -725,7 +754,7 @@ class CharactersPlugin(Plugin):
             prism = self._find_prism(character, prism_query.strip())
             prism.apply(character, roll)
             prism_summaries.append(f'**{prism.name}** [{prism.summary}]')
-        result = roll.resolve()
+        result = roll.resolve(force_result)
 
         msg = (
             f'{character["name"]} rolled: **{result.total}** '
@@ -769,8 +798,10 @@ class RollResult:
     def total(self) -> int:
         return self.dice_total + self.modifier
 
-    def add_roll(self) -> None:
-        self.dice.append(random.randint(1, 6))
+    def add_roll(self, forced_result: Optional[int] = None) -> None:
+        self.dice.append(
+            forced_result if forced_result is not None else random.randint(1, 6)
+        )
 
     def __str__(self):
         return (
@@ -792,10 +823,51 @@ class Roll:
         self.modifier = modifier
         self.rerolls = rerolls
 
-    def resolve(self) -> RollResult:
+    def resolve(self, force_result: Optional[int] = None) -> RollResult:
         result = RollResult(modifier=self.modifier, rerolls=self.rerolls)
-        for _ in range(self.num_dice):
-            result.add_roll()
+
+        # If a result is being forced, contrive rolls to arrive at that number
+        # Contrive to make them somewhat plausible
+        if force_result:
+            force_result -= self.modifier
+            num_dice = self.num_dice
+
+            # Add more dice if we can't get to the target (with a small margin
+            # for plausibility)
+            while num_dice * 6 < 1.2 * force_result:
+                num_dice += 1
+
+            # Remove dice if the only way to get close to the target is to roll
+            # all 1's (minimum of one dice)
+            while num_dice > 1 and num_dice * 1 > 0.8 * force_result:
+                num_dice -= 1
+
+            rolls = [random.randint(1, 6) for _ in range(num_dice)]
+            while True:
+                total = sum(rolls)
+                if total > force_result:
+                    can_be_lowered = [
+                        idx for idx, roll in enumerate(rolls) if roll > 1
+                    ]
+                    if not can_be_lowered:
+                        break
+                    idx = random.choice(can_be_lowered)
+                    rolls[idx] -= 1
+                elif total < force_result:
+                    can_be_raised = [
+                        idx for idx, roll in enumerate(rolls) if roll < 6
+                    ]
+                    if not can_be_raised:
+                        break
+                    idx = random.choice(can_be_raised)
+                    rolls[idx] += 1
+                else:
+                    break
+            for roll in rolls:
+                result.add_roll(roll)
+        else:
+            for _ in range(self.num_dice):
+                result.add_roll()
         return result
 
 
@@ -812,7 +884,7 @@ class Prism(ABC):
         return '???'
 
     @abstractmethod
-    def apply(self, character: Dict[str, Any], roll: Roll) -> Roll:
+    def apply(self, character: Dict[str, Any], roll: Roll) -> None:
         raise NotImplementedError
 
 
@@ -898,6 +970,19 @@ class OutputPrism(Prism):
 
     def apply(self, character: Dict[str, Any], roll: Roll) -> None:
         roll.rerolls += self.tier
+
+
+class SpecialPrism(Prism):
+    @property
+    def summary(self):
+        return f'Special'
+
+    def apply(self, character: Dict[str, Any], roll: Roll) -> None:
+        pass
+
+
+class FakerPrism(SpecialPrism):
+    pass
 
 
 PLUGIN = CharactersPlugin

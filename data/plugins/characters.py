@@ -1,10 +1,10 @@
 import random
 import re
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, Optional, List, Iterable
+from typing import TYPE_CHECKING, Any, Dict, Optional, List, Iterable, Union
 
 import requests
-from discord import Message, Member, Guild, TextChannel
+from discord import Message, Member, Guild, TextChannel, Reaction, User
 
 from rpbot.base_plugin import BasePlugin
 from rpbot.data.roleplay import Roleplay
@@ -88,6 +88,7 @@ class CharactersPlugin(Plugin):
         super().__init__(bot, roleplay)
         self.prisms = {}
         self.npcs = {}
+        self.rerolls = {}
         for name, data in {**STANDARD_PRISMS, **prisms}.items():
             t = data['type']
             d = data.get('description')
@@ -287,6 +288,18 @@ class CharactersPlugin(Plugin):
             for command in self.commands.values():
                 command.enabled = command.name in roleplay.commands
 
+    async def process_react(
+            self, reaction: Reaction, user: Union[Member, User]
+    ) -> bool:
+        message_id = reaction.message.id
+        if message_id in self.rerolls:
+            reroll_info = self.rerolls[message_id]
+            if reroll_info['user'] == user.id:
+                await reroll_info['callback']()
+                await reaction.clear()
+                del self.rerolls[message_id]
+        return False
+
     @delete_message
     async def character_create(self, message: Message, name: str) -> None:
         characters = await self._get_player_characters(message.author)
@@ -465,7 +478,7 @@ class CharactersPlugin(Plugin):
             self, message: Message, npc_name: str, prisms: Optional[List[str]]
     ) -> None:
         npc = await self._get_npc_by_name(npc_name)
-        await self._roll_prisms(message.channel, npc, prisms)
+        await self._roll_prisms(message.channel, message.author, npc, prisms)
 
     @delete_message
     async def action_points(self, message: Message, points: int) -> None:
@@ -524,7 +537,7 @@ class CharactersPlugin(Plugin):
     @delete_message
     async def prism(self, message: Message, prisms: Optional[List[str]]) -> None:
         character = await self._get_active_character(message.author)
-        await self._roll_prisms(message.channel, character, prisms)
+        await self._roll_prisms(message.channel, message.author, character, prisms)
 
     # noinspection PyUnusedLocal
     @delete_message
@@ -581,7 +594,9 @@ class CharactersPlugin(Plugin):
         if not has_faker:
             await message.channel.send(f'No valid prism for roll.')
             return
-        await self._roll_prisms(message.channel, character, prisms, result)
+        await self._roll_prisms(
+            message.channel, message.author, character, prisms, result
+        )
 
     @delete_message
     async def refresh(self, message: Message, points: int) -> None:
@@ -738,9 +753,11 @@ class CharactersPlugin(Plugin):
     async def _roll_prisms(
             self,
             channel: TextChannel,
+            author: User,
             character: Dict[str, Any],
             prisms: Optional[Iterable[str]],
-            force_result: Optional[int] = None
+            force_result: Optional[int] = None,
+            rerolls_left: Optional[int] = None
     ) -> None:
         if not prisms:
             msg = f'**{character["name"]}** owns the following prisms:'
@@ -755,6 +772,8 @@ class CharactersPlugin(Plugin):
             prism.apply(character, roll)
             prism_summaries.append(f'**{prism.name}** [{prism.summary}]')
         result = roll.resolve(force_result)
+        if rerolls_left is not None:
+            result.rerolls = rerolls_left
 
         msg = (
             f'{character["name"]} rolled: **{result.total}** '
@@ -765,7 +784,22 @@ class CharactersPlugin(Plugin):
         msg += '\n*' + ' > '.join(prism_summaries) + '*'
         msg += '\n' + ' '.join(BasePlugin.NUMBERS_EMOJI[r] for r in result.dice)
 
-        await channel.send(msg)
+        message = await channel.send(msg)
+        if result.rerolls > 0:
+            async def reroll_func():
+                await self._roll_prisms(
+                    channel,
+                    author,
+                    character,
+                    prisms,
+                    force_result,
+                    result.rerolls - 1
+                )
+            self.rerolls[message.id] = {
+                'user': author.id,
+                'callback': reroll_func
+            }
+            await message.add_reaction('🔄')
         await self.bot.get_chronicle(channel.guild).log_roll(
             character["name"], channel, result.total
         )

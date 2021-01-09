@@ -1,10 +1,11 @@
 import logging
 from abc import ABC, abstractmethod
 from functools import wraps
-from typing import Callable, Optional, List, Any, Dict, TYPE_CHECKING, Tuple
+from typing import Callable, Optional, List, Any, Dict, TYPE_CHECKING, Tuple, \
+    Union
 
-from discord import Message, Guild
-from discord.abc import GuildChannel
+from discord import Message, Guild, Reaction, Member
+from discord.abc import GuildChannel, User
 
 from rpbot.data.roleplay import Roleplay
 from rpbot.state import State
@@ -45,6 +46,12 @@ class Plugin(ABC):
 
     async def process_message(self, message: Message) -> bool:
         return await self.check_for_command(message)
+
+    # noinspection PyUnusedLocal
+    async def process_react(
+            self, reaction: Reaction, user: Union[Member, User]
+    ) -> bool:
+        return False
 
     async def check_for_command(self, message: Message) -> bool:
         m = message.clean_content

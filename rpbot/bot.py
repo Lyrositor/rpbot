@@ -5,12 +5,12 @@ import os
 import sys
 from asyncio import BaseEventLoop
 from glob import glob
-from typing import List, Dict, Type, Any, Optional
+from typing import List, Dict, Type, Any, Optional, Union
 
 import discord
 import yaml
 from discord import Client, CategoryChannel, TextChannel, PermissionOverwrite, \
-    Guild, Message, NotFound, Color, Forbidden, Intents
+    Guild, Message, NotFound, Color, Forbidden, Intents, Reaction, User, Member
 
 from rpbot.base_plugin import BasePlugin
 from rpbot.chronicle import Chronicle
@@ -128,6 +128,14 @@ class RoleplayBot(Client):
                 await self.get_chronicle(message.guild).log_player_message(
                     message.author, message.channel, message.clean_content
                 )
+
+    async def on_reaction_add(
+            self, reaction: Reaction, user: Union[Member, User]
+    ) -> None:
+        plugins = self.get_all_plugins(reaction.message.guild)
+        for plugin in plugins:
+            if await plugin.process_react(reaction, user):
+                break
 
     def get_chronicle(self, guild: Guild) -> Chronicle:
         if guild.id not in self.chronicles:

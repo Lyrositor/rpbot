@@ -1,7 +1,8 @@
 import random
 import re
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, Optional, List, Iterable, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, List, Iterable, Union, \
+    Tuple
 
 import requests
 from discord import Message, Member, Guild, TextChannel, Reaction, User
@@ -36,6 +37,7 @@ STATUS_CMD = 'status'
 
 NAMES_REGEX = re.compile(r'[a-z0-9 .]+')
 PASSWORD_REGEX = re.compile(r'[a-zA-Z0-9]+')
+PRISM_ROLL_REGEX = re.compile(r'^(.*?)(?:\[(.*)])?$')
 
 STANDARD_PRISMS = {
     'Force': {
@@ -106,6 +108,10 @@ class CharactersPlugin(Plugin):
                 prism = OutputPrism(name, d, data['tier'])
             elif t == 'faker':
                 prism = FakerPrism(name, d)
+            elif t == 'weighter':
+                prism = WeighterPrism(name, d, data['weights'])
+            elif t == 'special':
+                prism = SpecialPrism(name, d, data.get('param_type'))
             else:
                 raise ValueError(f'Unknown prism type "{t}"')
             self.prisms[name] = prism
@@ -761,15 +767,23 @@ class CharactersPlugin(Plugin):
     ) -> None:
         if not prisms:
             msg = f'**{character["name"]}** owns the following prisms:'
-            for prism in self._get_all_prisms(character):
+            for prism_name in self._get_all_prisms(character):
+                prism = self.prisms[prism_name]
                 msg += f'\n- {prism}'
             await channel.send(msg)
             return
         prism_summaries = []
         roll = Roll()
-        for prism_query in prisms:
+        for prism_cmd in prisms:
+            match = PRISM_ROLL_REGEX.match(prism_cmd)
+            prism_query = match.group(1)
+            prism_param = match.group(2)
             prism = self._find_prism(character, prism_query.strip())
-            prism.apply(character, roll)
+            prism.apply(
+                character,
+                roll,
+                prism_param if isinstance(prism, SpecialPrism) else None
+            )
             prism_summaries.append(f'**{prism.name}** [{prism.summary}]')
         result = roll.resolve(force_result)
         if rerolls_left is not None:
@@ -818,11 +832,18 @@ class RollResult:
     dice: List[int]
     modifier: int
     rerolls: int
+    weights: Optional[Tuple[int, int, int, int, int, int]]
 
-    def __init__(self, modifier: int, rerolls: int):
+    def __init__(
+            self,
+            modifier: int,
+            rerolls: int,
+            weights: Optional[Tuple[int, int, int, int, int, int]] = None
+    ):
         self.dice = []
         self.modifier = modifier
         self.rerolls = rerolls
+        self.weights = weights
 
     @property
     def dice_total(self) -> int:
@@ -834,8 +855,14 @@ class RollResult:
 
     def add_roll(self, forced_result: Optional[int] = None) -> None:
         self.dice.append(
-            forced_result if forced_result is not None else random.randint(1, 6)
+            forced_result if forced_result is not None else self._get_roll()
         )
+
+    def _get_roll(self) -> int:
+        if self.weights:
+            return random.choices((1, 2, 3, 4, 5, 6), self.weights)[0]
+        else:
+            return random.randint(1, 6)
 
     def __str__(self):
         return (
@@ -851,14 +878,24 @@ class Roll:
     num_dice: int
     modifier: int
     rerolls: int
+    weights: Optional[Tuple[int, int, int, int, int, int]]
 
-    def __init__(self, num_dice: int = 0, modifier: int = 0, rerolls: int = 0):
+    def __init__(
+            self,
+            num_dice: int = 0,
+            modifier: int = 0,
+            rerolls: int = 0,
+            weights: Optional[Tuple[int, int, int, int, int, int]] = None
+    ):
         self.num_dice = num_dice
         self.modifier = modifier
         self.rerolls = rerolls
+        self.weights = weights
 
     def resolve(self, force_result: Optional[int] = None) -> RollResult:
-        result = RollResult(modifier=self.modifier, rerolls=self.rerolls)
+        result = RollResult(
+            modifier=self.modifier, rerolls=self.rerolls, weights=self.weights
+        )
 
         # If a result is being forced, contrive rolls to arrive at that number
         # Contrive to make them somewhat plausible
@@ -918,8 +955,13 @@ class Prism(ABC):
         return '???'
 
     @abstractmethod
-    def apply(self, character: Dict[str, Any], roll: Roll) -> None:
+    def apply(
+            self, character: Dict[str, Any], roll: Roll, param: Optional[Any]
+    ) -> None:
         raise NotImplementedError
+
+    def __str__(self):
+        return f'{self.name} [{self.summary}]: {self.description}'
 
 
 class AdderPrism(Prism):
@@ -933,8 +975,12 @@ class AdderPrism(Prism):
     def summary(self):
         return f'Adder, {self.num_dice}'
 
-    def apply(self, character: Dict[str, Any], roll: Roll) -> None:
+    def apply(
+            self, character: Dict[str, Any], roll: Roll, param: Optional[Any]
+    ) -> None:
         roll.num_dice += self.num_dice
+        if param is not None:
+            roll.num_dice += int(param)
 
 
 class AbilityPrism(Prism):
@@ -942,8 +988,11 @@ class AbilityPrism(Prism):
     def summary(self):
         return f'Ability'
 
-    def apply(self, character: Dict[str, Any], roll: Roll) -> None:
-        roll.num_dice += character['abilities'][self.name.lower()]
+    def apply(
+            self, character: Dict[str, Any], roll: Roll, param: Optional[Any]
+    ) -> None:
+        ability = param if param is not None else self.name
+        roll.num_dice += character['abilities'][ability.lower()]
 
 
 class BonusPrism(Prism):
@@ -957,8 +1006,12 @@ class BonusPrism(Prism):
     def summary(self):
         return f'Bonus, {"+" if self.modifier > 0 else ""}{self.modifier}'
 
-    def apply(self, character: Dict[str, Any], roll: Roll) -> None:
+    def apply(
+            self, character: Dict[str, Any], roll: Roll, param: Optional[Any]
+    ) -> None:
         roll.modifier += self.modifier
+        if param is not None:
+            roll.modifier += int(param)
 
 
 class MergerPrism(Prism):
@@ -972,8 +1025,11 @@ class MergerPrism(Prism):
     def summary(self):
         return f'Merger, {self.ability}'
 
-    def apply(self, character: Dict[str, Any], roll: Roll) -> None:
-        roll.num_dice += character['abilities'][self.ability.lower()]
+    def apply(
+            self, character: Dict[str, Any], roll: Roll, param: Optional[Any]
+    ) -> None:
+        ability = param if param is not None else self.name
+        roll.num_dice += character['abilities'][ability.lower()]
 
 
 class MultiplierPrism(Prism):
@@ -987,8 +1043,12 @@ class MultiplierPrism(Prism):
     def summary(self):
         return f'Multiplier, x{self.multiplier}'
 
-    def apply(self, character: Dict[str, Any], roll: Roll) -> None:
-        roll.num_dice *= self.multiplier
+    def apply(
+            self, character: Dict[str, Any], roll: Roll, param: Optional[Any]
+    ) -> None:
+        roll.num_dice = int(roll.num_dice * self.multiplier)
+        if param is not None:
+            roll.num_dice = int(roll.num_dice * int(param))
 
 
 class OutputPrism(Prism):
@@ -1002,21 +1062,60 @@ class OutputPrism(Prism):
     def summary(self):
         return f'Output, Tier {self.tier}'
 
-    def apply(self, character: Dict[str, Any], roll: Roll) -> None:
+    def apply(
+            self, character: Dict[str, Any], roll: Roll, param: Optional[Any]
+    ) -> None:
         roll.rerolls += self.tier
+        if param is not None:
+            roll.rerolls += int(param)
 
 
 class SpecialPrism(Prism):
+    param_type: Optional[str]
+
+    def __init__(
+            self, name: str, description: str, param_type: Optional[str] = None
+    ):
+        super().__init__(name, description)
+        self.param_type = param_type
+
     @property
     def summary(self):
         return f'Special'
 
-    def apply(self, character: Dict[str, Any], roll: Roll) -> None:
-        pass
+    def apply(
+            self, character: Dict[str, Any], roll: Roll, param: Optional[Any]
+    ) -> None:
+        if param is not None:
+            if self.param_type == 'adder':
+                roll.num_dice += int(param)
+            elif self.param_type == 'bonus':
+                roll.modifier += int(param)
+            elif self.param_type == 'multiplier':
+                roll.num_dice = int(roll.num_dice * int(param))
+            elif self.param_type == 'merger':
+                roll.num_dice += character['abilities'][param.lower()]
+            else:
+                raise ValueError(
+                    f'Unexpected parameter to special prism {self.name}'
+                )
 
 
 class FakerPrism(SpecialPrism):
     pass
+
+
+class WeighterPrism(SpecialPrism):
+    def __init__(
+            self, name: str, description: str, weights: List[int]
+    ):
+        super().__init__(name, description)
+        self.weights = tuple(weights)
+
+    def apply(
+            self, character: Dict[str, Any], roll: Roll, param: Optional[Any]
+    ) -> None:
+        roll.weights = self.weights
 
 
 PLUGIN = CharactersPlugin

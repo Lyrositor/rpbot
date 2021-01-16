@@ -294,7 +294,6 @@ class BasePlugin(Plugin):
         await message.delete()
 
     async def move(self, message: Message, room: Optional[str]):
-        await message.delete()
         connections = State.get_config(message.guild.id)['connections']
         channel: TextChannel = message.channel
         destinations = self._list_destinations(connections, channel.name)
@@ -312,6 +311,7 @@ class BasePlugin(Plugin):
                 else 'No destinations are currently available.',
                 delete_after=60*60
             )
+            await message.delete()
             return
 
         for destination, locked in destinations:
@@ -321,6 +321,7 @@ class BasePlugin(Plugin):
                         f'{room} is currently locked off.',
                         delete_after=60*60
                     )
+                    await message.delete()
                     return
                 break
         else:
@@ -361,6 +362,7 @@ class BasePlugin(Plugin):
         await new_channel.send(
             f'{message.author.mention} moves in from {channel.name}'
         )
+        await message.delete()
 
     async def move_all(self, message: Message, room: str):
         for player in State.get_player_role(message.guild.id).members:

@@ -298,12 +298,13 @@ class CharactersPlugin(Plugin):
             self, reaction: Reaction, user: Union[Member, User]
     ) -> bool:
         message_id = reaction.message.id
-        if message_id in self.rerolls:
+        if reaction.emoji == '🔄' and message_id in self.rerolls:
             reroll_info = self.rerolls[message_id]
             if reroll_info['user'] == user.id:
                 await reroll_info['callback']()
                 await reaction.clear()
                 del self.rerolls[message_id]
+                return True
         return False
 
     @delete_message
@@ -774,6 +775,7 @@ class CharactersPlugin(Plugin):
             return
         prism_summaries = []
         roll = Roll()
+        rolled_prism_names = set()
         for prism_cmd in prisms:
             match = PRISM_ROLL_REGEX.match(prism_cmd)
             prism_query = match.group(1)
@@ -784,6 +786,7 @@ class CharactersPlugin(Plugin):
                 roll,
                 prism_param if isinstance(prism, SpecialPrism) else None
             )
+            rolled_prism_names.add(prism.name.lower().strip())
             prism_summaries.append(f'**{prism.name}** [{prism.summary}]')
         result = roll.resolve(force_result)
         if rerolls_left is not None:
@@ -814,6 +817,8 @@ class CharactersPlugin(Plugin):
                 'callback': reroll_func
             }
             await message.add_reaction('🔄')
+            if "laika" in rolled_prism_names:
+                await message.add_reaction('🐶')
         await self.bot.get_chronicle(channel.guild).log_roll(
             character["name"], channel, result.total
         )
@@ -1028,7 +1033,7 @@ class MergerPrism(Prism):
     def apply(
             self, character: Dict[str, Any], roll: Roll, param: Optional[Any]
     ) -> None:
-        ability = param if param is not None else self.name
+        ability = param if param is not None else self.ability
         roll.num_dice += character['abilities'][ability.lower()]
 
 

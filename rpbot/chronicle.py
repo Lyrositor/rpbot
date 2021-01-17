@@ -1,4 +1,3 @@
-from collections import defaultdict
 from typing import Optional
 
 from discord import Member, TextChannel, Guild
@@ -57,7 +56,10 @@ class Chronicle:
         await self.log(channel.name, f"`[{channel.name}]` {message}")
 
     async def log(self, source_channel: Optional[str], message: str) -> None:
-        views = State.get_config(self.guild.id).get('views', {})
+        config = State.get_config(self.guild.id)
+        if not config:
+            return
+        views = config.get('views', {})
         dest_channels = {self.channel_name}
         if source_channel in views:
             dest_channels.update(views[source_channel])

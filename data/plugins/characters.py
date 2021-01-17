@@ -12,7 +12,7 @@ from rpbot.data.roleplay import Roleplay
 from rpbot.plugin import Plugin, PluginCommandParam, delete_message, \
     CommandException
 from rpbot.state import State
-from rpbot.utils import hash_password, reply
+from rpbot.utils import hash_password, reply, fuzzy_search
 
 if TYPE_CHECKING:
     from rpbot.bot import RoleplayBot
@@ -684,9 +684,9 @@ class CharactersPlugin(Plugin):
 
         characters = characters_by_player[user_id]['characters']
         query = self._get_character_id(character_name)
-        for name, value in characters.items():
-            if name.startswith(query):
-                return value
+        character_id = fuzzy_search(query, characters.keys())
+        if character_id is not None:
+            return characters[character_id]
 
         raise CommandException(f'Failed to locate character.')
 
@@ -703,11 +703,10 @@ class CharactersPlugin(Plugin):
         return name.lower().strip()
 
     def _find_prism(self, character: Dict[str, Any], query: str) -> 'Prism':
-        for prism in self._get_all_prisms(character):
-            if prism.lower().startswith(query.lower()):
-                prism_name = prism
-                break
-        else:
+        prism_name = fuzzy_search(
+            query.lower(), self._get_all_prisms(character)
+        )
+        if prism_name is None:
             raise CommandException(f'Character does not own prism "{query}".')
         prism = self.prisms.get(prism_name)
         if not prism:
@@ -724,9 +723,9 @@ class CharactersPlugin(Plugin):
 
     async def _get_npc_by_name(self, npc_name: str) -> Dict[str, Any]:
         query = self._get_character_id(npc_name)
-        for npc_id, value in self.npcs.items():
-            if npc_id.startswith(query):
-                return value
+        npc_id = fuzzy_search(query, self.npcs.keys())
+        if npc_id is not None:
+            return self.npcs[npc_id]
         raise CommandException(f'Failed to locate NPC.')
 
     def _get_npcs_in_room(

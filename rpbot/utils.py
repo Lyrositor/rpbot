@@ -1,9 +1,10 @@
 import binascii
 import hashlib
 import os
-from typing import Tuple
+from typing import Tuple, Iterable, Optional
 
 from discord import Message
+from fuzzywuzzy.process import extractOne
 
 MAX_MESSAGE_LENGTH = 2000
 
@@ -33,3 +34,10 @@ async def reply(original_message: Message, text: str) -> None:
         messages[-1] += line + '\n'
     for message in messages:
         await original_message.channel.send(message.strip())
+
+
+def fuzzy_search(query: str, options: Iterable[str]) -> Optional[str]:
+    result = extractOne(query, sorted(options), score_cutoff=50)
+    if result is not None:
+        return result[0]
+    return None

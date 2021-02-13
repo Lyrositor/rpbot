@@ -27,6 +27,7 @@ FATE_CMD = 'fate'
 LOCK_CMD = 'lock'
 UNLOCK_CMD = 'unlock'
 REVEAL_CMD = 'reveal'
+HIDE_CMD = 'hide'
 KEY_CMD = 'key'
 RELOAD_CMD = 'reload'
 ANNOUNCE_CMD = 'a'
@@ -155,6 +156,14 @@ class BasePlugin(Plugin):
             name=REVEAL_CMD,
             handler=self.reveal,
             help_msg='Reveals an entrance to another location.',
+            requires_admin=True,
+            requires_room=True,
+            params=[PluginCommandParam('location')]
+        )
+        self.register_command(
+            name=HIDE_CMD,
+            handler=self.hide,
+            help_msg='Hides an entrance to another location.',
             requires_admin=True,
             requires_room=True,
             params=[PluginCommandParam('location')]
@@ -457,7 +466,8 @@ class BasePlugin(Plugin):
             )
             return
 
-        if not connection.hidden:
+        is_hidden = config['connections'][connection.name].get('h', False)
+        if not is_hidden:
             await channel.send(
                 f'Connection from {channel.name} to {location} is already '
                 'revealed.',
@@ -469,6 +479,36 @@ class BasePlugin(Plugin):
             await self.bot.save_guild_config(message.guild, config)
             text = f'A connection between {channel.name} and {location} has ' \
                    f'been revealed.'
+            await channel.send(text)
+            await message.delete()
+            await self.bot.get_chronicle(message.guild).log_announcement(
+                channel, text
+            )
+
+    async def hide(self, message: Message, location: str):
+        config = State.get_config(message.guild.id)
+        channel: TextChannel = message.channel
+        connection = self.roleplay.get_connection(channel.name, location)
+        if not connection:
+            await channel.send(
+                f'No connection from {channel.name} to {location}.',
+                delete_after=60*60
+            )
+            return
+
+        is_hidden = config['connections'][connection.name].get('h', False)
+        if is_hidden:
+            await channel.send(
+                f'Connection from {channel.name} to {location} is already '
+                'hidden.',
+                delete_after=60*60
+            )
+        else:
+            config['connections'][connection.name]['h'] = True
+            State.save_config(message.guild.id, config)
+            await self.bot.save_guild_config(message.guild, config)
+            text = f'A connection between {channel.name} and {location} has ' \
+                   f'been hidden.'
             await channel.send(text)
             await message.delete()
             await self.bot.get_chronicle(message.guild).log_announcement(

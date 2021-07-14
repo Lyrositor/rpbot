@@ -29,11 +29,13 @@ class Chronicle:
     async def log_movement(
             self, name: str, room: str, channel: Optional[TextChannel] = None
     ) -> None:
-        await self.log(
-            room,
+        text = (
             f'`[{channel.name if channel else "???"}]` '
             f'**{name}** moves to **{room}**'
         )
+        if channel:
+            await self.log(channel.name, text, extra_only=True)
+        await self.log(room, text)
 
     async def log_announcement(
             self, channel: Optional[TextChannel], message: str
@@ -55,12 +57,17 @@ class Chronicle:
     async def log_from_channel(self, channel: TextChannel, message: str) -> None:
         await self.log(channel.name, f"`[{channel.name}]` {message}")
 
-    async def log(self, source_channel: Optional[str], message: str) -> None:
+    async def log(
+            self,
+            source_channel: Optional[str],
+            message: str,
+            extra_only: bool = False,
+    ) -> None:
         config = State.get_config(self.guild.id)
         if not config:
             return
         views = config.get('views', {})
-        dest_channels = {self.channel_name}
+        dest_channels = set() if extra_only else {self.channel_name}
         if source_channel in views:
             dest_channels.update(views[source_channel])
         for channel in self.guild.text_channels:

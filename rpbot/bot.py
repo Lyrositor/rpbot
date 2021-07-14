@@ -78,7 +78,8 @@ class RoleplayBot(Client):
                         logging.warning(
                             'No config message found, ignoring guild'
                         )
-                    except json.JSONDecodeError:
+                    except json.JSONDecodeError as e:
+                        logging.error(e)
                         logging.warning('Config is invalid, ignoring guild')
                     except Exception:
                         logging.exception(

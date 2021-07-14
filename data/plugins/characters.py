@@ -140,7 +140,7 @@ class CharactersPlugin(Plugin):
             handler=self.character_edit,
             help_msg=(
                 'Edits an attribute of the active character. Available '
-                'attributes: `age`, `status`, `avatar`, `force`, `presence`, '
+                'attributes: `age`, `appearance`, `status`, `avatar`, `force`, `presence`, '
                 '`guts`, `wits`, `sensation`, `reflection`.'
             ),
             requires_player=True,
@@ -561,6 +561,10 @@ class CharactersPlugin(Plugin):
             raise CommandException(
                 f'{character["name"]} already owns "{prism_clean}".'
             )
+        if prism_clean not in self.prisms:
+            raise CommandException(
+                f'Unknown prism "{prism_clean}".'
+            )
         character['prisms'].append(prism_clean)
         await self._save_config(message.guild)
         await message.channel.send(
@@ -635,7 +639,7 @@ class CharactersPlugin(Plugin):
         for npc in self._get_npcs_in_room(
                 message.guild, message.channel.name
         ):
-            statuses.append(f'**{npc["name"]}:** {npc["description"]}')
+            statuses.append(f'**{npc["name"]}:** {npc["status"]}')
 
         if statuses:
             text = 'The following people are here:'
@@ -770,7 +774,7 @@ class CharactersPlugin(Plugin):
             for prism_name in self._get_all_prisms(character):
                 prism = self.prisms[prism_name]
                 msg += f'\n- {prism}'
-            await channel.send(msg)
+            await reply(channel, msg)
             return
         prism_summaries = []
         roll = Roll()

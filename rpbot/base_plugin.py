@@ -1,4 +1,6 @@
 import asyncio
+import random
+import re
 from collections import defaultdict
 from datetime import datetime, timedelta
 from random import randint
@@ -37,14 +39,6 @@ VIEW_LIST_CMD = 'viewlist'
 
 
 class BasePlugin(Plugin):
-    NUMBERS_EMOJI = {
-        1: ':one:',
-        2: ':two:',
-        3: ':three:',
-        4: ':four:',
-        5: ':five:',
-        6: ':six:',
-    }
     FATE_EMOJI = {
         -1: ':heavy_minus_sign:',
         0: ':black_square_button:',
@@ -124,10 +118,11 @@ class BasePlugin(Plugin):
         self.register_command(
             name=ROLL_CMD,
             handler=self.roll_dice,
-            help_msg='Rolls the specified number of d6s.',
+            help_msg='Rolls the specified number of polyhedral dice in standard notation (2d4, 3d10...). If the number '
+                     'of sides is not specified, it defaults to 6.',
             requires_player=False,
             requires_room=False,
-            params=[PluginCommandParam('dice', True, 1, int)]
+            params=[PluginCommandParam('dice', True, "1")]
         )
         self.register_command(
             name=FATE_CMD,
@@ -393,34 +388,6 @@ class BasePlugin(Plugin):
             move_timers[player.id] = datetime.min
         State.set_var(message.guild.id, 'move_timers', move_timers)
 
-    async def roll_dice(self, message: Message, num_dice: int):
-        await message.delete()
-        if num_dice < 1:
-            await message.channel.send(
-                'You need to specify a positive number of dice to roll.',
-                delete_after=60*60
-            )
-            return
-        if num_dice > 20:
-            await message.channel.send(
-                'You can only roll a maximum of 20 dice.',
-                delete_after=60*60
-            )
-            return
-        results = []
-        total = 0
-        for i in range(num_dice):
-            result = randint(1, 6)
-            total += result
-            results.append(self.NUMBERS_EMOJI[result])
-        await message.channel.send(
-            f'{message.author.mention} rolled **{total}**: '
-            + ' '.join(results)
-        )
-        await self.bot.get_chronicle(message.guild).log_roll(
-            message.author.mention, message.channel, total
-        )
-
     async def roll_dice_fate(self, message: Message, num_dice: int):
         await message.delete()
         if num_dice < 1:
@@ -445,6 +412,35 @@ class BasePlugin(Plugin):
             f'{message.author.mention} rolled **{total}**: '
             + ' '.join(results)
         )
+        await self.bot.get_chronicle(message.guild).log_roll(
+            message.author.mention, message.channel, total
+        )
+
+    @delete_message
+    async def roll_dice(self, message: Message, dice: str = "1") -> Optional[str]:
+        elements = re.split(r'\s+', dice.strip())
+        rolls = []
+        for element in elements:
+            match = re.match(r'^(\d+)(?:d(\d+))?$', element)
+            if not match:
+                await message.channel.send(f'Invalid roll request: {dice}')
+                return
+            num_dice, num_sides = int(match.group(1)), int(match.group(2) or "6")
+            for _ in range(num_dice):
+                # Special case for the d100
+                if num_sides == 100:
+                    rolls.append((random.randint(0, num_sides - 1), num_sides))
+                else:
+                    rolls.append((random.randint(1, num_sides), num_sides))
+        roll_results = " + ".join(
+            (str(roll).zfill(2) if num_sides == 100 else str(roll)) + f" [d{num_sides}]" for roll, num_sides in rolls
+        )
+        total = sum(roll for roll, num_sides in rolls)
+        if len(rolls) == 1:
+            roll_message = f'rolled {roll_results}'
+        else:
+            roll_message = f'rolled **{total}** = {roll_results}'
+        await message.channel.send(f'{message.author.mention} {roll_message}')
         await self.bot.get_chronicle(message.guild).log_roll(
             message.author.mention, message.channel, total
         )

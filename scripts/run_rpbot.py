@@ -2,7 +2,6 @@ import asyncio
 import logging
 import signal
 from operator import itemgetter
-from typing import Any, Dict
 
 import aiohttp_jinja2
 import jinja2
@@ -105,6 +104,15 @@ async def character(request: Request):
         config = State.get_config(guild_id)
         characters_data = config.get('characters', {})
         char = characters_data.get(user_id, {}).get('characters', {}).get(character_id)
+        if char:
+            move_timers = State.get_var(guild_id, 'move_timers')
+            move_countdown_time = None
+            if move_timers:
+                move_countdown_time = move_timers.get(int(user_id))
+            char = {
+                **char,
+                "move_countdown_time": move_countdown_time.astimezone().isoformat() if move_countdown_time else ""
+            }
     return {
         'character': char
     }

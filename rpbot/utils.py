@@ -1,9 +1,9 @@
 import binascii
 import hashlib
 import os
-from typing import Tuple, Iterable, Optional
+from typing import Tuple, Iterable, Optional, Union
 
-from discord import Message
+from discord import Message, TextChannel
 from fuzzywuzzy.process import extractOne
 
 MAX_MESSAGE_LENGTH = 2000
@@ -25,7 +25,7 @@ def verify_password(password: str, hashed_password: Tuple[str, str]) -> bool:
     return key == actual_key
 
 
-async def reply(original_message: Message, text: str) -> None:
+async def reply(original_message: Union[Message, TextChannel], text: str) -> None:
     lines = text.split('\n')
     messages = ['']
     for line in lines:
@@ -33,7 +33,11 @@ async def reply(original_message: Message, text: str) -> None:
             messages.append('')
         messages[-1] += line + '\n'
     for message in messages:
-        await original_message.channel.send(message.strip())
+        if isinstance(original_message, Message):
+            channel = original_message.channel
+        else:
+            channel = original_message
+        await channel.send(message.strip())
 
 
 def fuzzy_search(query: str, options: Iterable[str]) -> Optional[str]:

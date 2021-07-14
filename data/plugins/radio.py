@@ -27,8 +27,7 @@ class RadioPlugin(Plugin):
         self.register_command(
             name=RADIO_CMD,
             handler=self.radio,
-            help_msg='Moves you to a new location if specified, otherwise lists'
-            ' available destinations.',
+            help_msg='Broadcasts a message to the radio channel in the same category as the room you\'re in, if there is one.',
             requires_player=True,
             requires_room=True,
             params=[PluginCommandParam('text')]
